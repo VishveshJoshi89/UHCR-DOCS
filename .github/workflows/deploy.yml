@@ -26,11 +26,11 @@ jobs:
           cache-dependency-path: ./package-lock.json
 
       - name: Install Dependencies
-        working-directory: ./
+        working-directory: ./UHCR-DOCS/
         run: npm ci
 
       - name: Build Website
-        working-directory: ./
+        working-directory: ./UHCR-DOCS/
         run: npm run build
 
       - name: Upload Artifact
