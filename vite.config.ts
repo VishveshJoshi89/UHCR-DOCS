@@ -8,27 +8,31 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate", // Automatically updates the service worker
+      registerType: "autoUpdate",
       manifest: {
         name: "UHCR-DOCS",
         short_name: "UHCR",
+        start_url: "/UHCR-DOCS/",
+        scope: "/UHCR-DOCS/",
+        display: "standalone",
         theme_color: "#ffffff",
+        background_color: "#ffffff",
         icons: [
           {
-            src: "./public/image/logo.png",
+            src: "image/logo.png",
             sizes: "192x192",
             type: "image/png",
           },
           {
-            src: "./public/image/logo.png",
+            src: "image/logo.png",
             sizes: "512x512",
             type: "image/png",
           },
           {
-            src: "./public/image/logo.png",
+            src: "image/logo.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: "any maskable", // Recommended for Android adaptive icons
+            purpose: "any maskable",
           },
         ],
       },
