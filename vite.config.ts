@@ -29,7 +29,7 @@ export default defineConfig({
             type: "image/png",
           },
           {
-            src: "image/logo192.png",
+            src: "image/logo512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable",
