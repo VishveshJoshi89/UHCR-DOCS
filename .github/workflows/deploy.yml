@@ -36,15 +36,12 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./web/dist
+          path: ./dist
 
   deploy:
     needs: build
 
     runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
 
     permissions:
       pages: write
