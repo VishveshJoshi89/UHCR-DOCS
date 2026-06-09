@@ -26,11 +26,9 @@ jobs:
           cache-dependency-path: ./package-lock.json
 
       - name: Install Dependencies
-        working-directory: ./UHCR-DOCS/
         run: npm ci
 
       - name: Build Website
-        working-directory: ./UHCR-DOCS/
         run: npm run build
 
       - name: Upload Artifact
@@ -40,8 +38,10 @@ jobs:
 
   deploy:
     needs: build
-
     runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
 
     permissions:
       pages: write
@@ -49,4 +49,5 @@ jobs:
 
     steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
