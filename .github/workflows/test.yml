@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./
+        run: npm ci
+
+      - name: Build Project
+        working-directory: ./
+        run: npm run build
+
+      - name: Run Linter
+        working-directory: ./
+        run: npm run lint
