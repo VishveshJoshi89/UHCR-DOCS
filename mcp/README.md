@@ -1,115 +1,28 @@
 # UHCR MCP Server
 
-Model Context Protocol (MCP) server for UHCR runtime operations.
+Model Context Protocol (MCP) interface layer managing local execution configurations for the Universal Hardware Compilation Runtime (UHCR).
 
-## Features
+## Core Capabilities
 
-### Tools
+### Functional Tool Matrix
 
-- **detect_hardware**: Detect hardware capabilities (CPU, GPU, memory)
-- **compile_function**: JIT compile Python functions
-- **benchmark**: Run performance benchmarks
-- **list_backends**: List available execution backends
-- **optimize_ir**: Optimize IR with specified passes
+* **detect_hardware**: Automatically fingerprints target device execution capabilities (AVX configurations, CUDA cores, architecture topologies).
+* **compile_function**: Runs runtime string inputs into the JIT cross-compiler pipeline checking context boundaries using `@uhcr.jit`.
+* **benchmark**: Executes runtime latency evaluation passes, performance metrics tracking, and raw ops/sec calculations.
+* **list_backends**: Lists compilation backends matching local device profiles.
+* **optimize_ir**: Interacts with the dynamic Intermediate Representation optimization scheduling stack.
 
-### Resources
+### Accessible Resources
 
-- **hardware://profile**: Current hardware profile
-- **backends://available**: Available execution backends
-- **cache://stats**: Compilation cache statistics
+* `hardware://profile` -> Returns structured operational execution hardware specifications.
+* `backends://available` -> Active system target runtime engine lists.
+* `cache://stats` -> Active memory compilation state metrics.
 
-## Installation
+## Setup Instructions
+
+### Environment Configuration
+
+Ensure the core runtime module dependency is present within your running python execution container:
 
 ```bash
-# Install UHCR
 pip install uhcr
-
-# No additional dependencies needed for MCP server
-```
-
-## Usage
-
-### Standalone
-
-```bash
-python web/mcp/server.py
-```
-
-### With MCP Client
-
-Add to your MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "uhcr": {
-      "command": "python",
-      "args": ["web/mcp/server.py"],
-      "env": {}
-    }
-  }
-}
-```
-
-## Example Tool Calls
-
-### Detect Hardware
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "detect_hardware",
-    "arguments": {
-      "format": "table"
-    }
-  }
-}
-```
-
-### Compile Function
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "compile_function",
-    "arguments": {
-      "code": "@uhcr.jit\ndef add(a, b):\n    return a + b",
-      "eager": true
-    }
-  }
-}
-```
-
-### Benchmark
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "tools/call",
-  "params": {
-    "name": "benchmark",
-    "arguments": {
-      "code": "def test():\n    return sum(range(1000))",
-      "iterations": 10000
-    }
-  }
-}
-```
-
-## Protocol
-
-Implements MCP protocol version 2024-11-05 with:
-- JSON-RPC 2.0 over stdio
-- Tools capability
-- Resources capability
-
-## License
-
-Apache-2.0

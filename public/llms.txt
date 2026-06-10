@@ -1,0 +1,13 @@
+# UHCR Documentation
+Welcome to the Universal Hardware Compilation Runtime (UHCR) documentation. 
+
+## Navigation Map
+All documentation pages use hash-routing for static hosting safety.
+
+- Core Overview: https://vishveshjoshi89.github.io/UHCR-DOCS/#/
+- Getting Started Guide: https://vishveshjoshi89.github.io/UHCR-DOCS/#/docs/quickstart
+- Plugin Builder Workspace: https://vishveshjoshi89.github.io/UHCR-DOCS/#/plugin-builder
+- Working of UHCR: https://vishveshjoshi89.github.io/UHCR-DOCS/#/docs/how-uhcr-works
+
+## Project Architecture Notes
+UHCR provides an interactive runtime plugin builder environment for JIT compiling across CPU, GPU, and custom hardware backends.
