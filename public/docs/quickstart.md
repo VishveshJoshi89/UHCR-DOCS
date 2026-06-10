@@ -342,7 +342,7 @@ If performance is slower than expected:
 ## Getting Help
 
 - **GitHub Issues:** [Report bugs or request features](https://github.com/VishveshJoshi89/UHCR/issues)
-- **Documentation:** [Full documentation](https://vishveshjoshi89.github.io/UHCR/)
+- **Documentation:** [Full documentation](https://vishveshjoshi89.github.io/UHCR-DOCS/)
 - **Contributing:** [Contribution guide](contributing)
 
-[View on GitHub](https://github.com/VishveshJoshi89/UHCR){: .btn .btn-primary }
+[View on GitHub](https://github.com/VishveshJoshi89/UHCR)

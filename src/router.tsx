@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createHashRouter, RouterProvider } from "react-router-dom"; // 1. Changed import
 import { Home } from "./pages/Home";
 import { DocPage } from "./pages/DocPage";
 import { NotFound } from "./pages/NotFound";
@@ -33,7 +33,8 @@ function PluginBuilderLayout() {
   );
 }
 
-const router = createBrowserRouter(
+// 2. Changed from createBrowserRouter to createHashRouter
+const router = createHashRouter(
   [
     {
       path: "/",
@@ -77,9 +78,7 @@ const router = createBrowserRouter(
       ),
     },
   ],
-  {
-    basename: "/UHCR-DOCS",
-  },
+  // 3. Optional: Removed basename as HashRouters typically don't need it on static hosts like GitHub Pages
 );
 
 export function Router() {

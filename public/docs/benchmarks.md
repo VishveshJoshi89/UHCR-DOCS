@@ -9,6 +9,12 @@ This page compares performance across three execution modes using **large worklo
 2. **UHCR with custom ISA plugin** - UHCR with ISA plugin backend  
 3. **UHCR without plugin** - UHCR built-in backends
 
+### Note (Warning)
+```
+⚠️ UHCR depends on every ISA and plugins:
+    for optimization, performance, merging, data calculation and benchmarks may be affected by it.
+```
+
 ## Benchmark Results (milliseconds)
 
 | Workload | Python (ms) | UHCR + Plugin (ms) | UHCR (ms) | Plugin Speedup | UHCR Speedup |

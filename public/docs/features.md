@@ -1,5 +1,3 @@
-
-
 ## JIT Compilation
 
 UHCR traces Python functions and compiles them to native machine code for maximum performance.
@@ -15,6 +13,7 @@ result = compute(10, 11)  # Compiled to native code!
 ```
 
 **Benefits:**
+
 - Zero-overhead native execution
 - Automatic type inference
 - Transparent fallback to Python
@@ -36,6 +35,7 @@ print(f"CUDA: {profile.gpu.cuda_available}")
 ```
 
 **Detected Information:**
+
 - CPU vendor, cores, threads, and instruction sets (SSE, AVX2, AVX512)
 - Cache hierarchy (L1, L2, L3 sizes and line sizes)
 - Memory size, speed, and type (DDR3/4/5)
@@ -48,12 +48,12 @@ print(f"CUDA: {profile.gpu.cuda_available}")
 
 UHCR automatically selects the best backend for your hardware.
 
-| Backend | Priority | Requirements | Use Case |
-|---------|----------|--------------|----------|
-| **CUDA** | 15 | NVIDIA GPU + CUDA | GPU-accelerated operations |
-| **AVX512** | 10 | Intel/AMD with AVX-512 | High-performance SIMD |
-| **AVX2** | 5 | Intel/AMD with AVX2 | Standard SIMD operations |
-| **Generic** | 1 | Any CPU | Fallback interpreter |
+| Backend     | Priority | Requirements           | Use Case                   |
+| ----------- | -------- | ---------------------- | -------------------------- |
+| **CUDA**    | 15       | NVIDIA GPU + CUDA      | GPU-accelerated operations |
+| **AVX512**  | 10       | Intel/AMD with AVX-512 | High-performance SIMD      |
+| **AVX2**    | 5        | Intel/AMD with AVX2    | Standard SIMD operations   |
+| **Generic** | 1        | Any CPU                | Fallback interpreter       |
 
 The runtime automatically picks the highest-priority backend that supports your hardware.
 
@@ -181,16 +181,17 @@ class MyPlugin(Plugin):
     @property
     def name(self):
         return "my-plugin"
-    
+
     def initialize(self, runtime):
         self.register_kernel("fast_relu", self._fast_relu)
         print("[MyPlugin] Loaded!")
-    
+
     def _fast_relu(self, data):
         return [max(0.0, x) for x in data]
 ```
 
 **Plugin Capabilities:**
+
 - Custom backends for specialized hardware
 - Optimized kernel implementations
 - Additional IR optimization passes
@@ -220,6 +221,7 @@ numpy_array = c.to_numpy()
 ```
 
 **Features:**
+
 - N-dimensional arrays with hardware-aligned memory
 - Automatic backend selection (CUDA, AVX2, etc.)
 - Zero-copy interop with NumPy
@@ -231,13 +233,13 @@ numpy_array = c.to_numpy()
 
 UHCR delivers significant speedups over pure Python:
 
-| Operation | Python | UHCR (AVX2) | UHCR (CUDA) | Speedup |
-|-----------|--------|-------------|-------------|---------|
-| Vector Add (1M) | 45ms | 2.1ms | 0.3ms | 21x - 150x |
-| Matrix Multiply (512×512) | 890ms | 18ms | 3.2ms | 49x - 278x |
-| Element-wise ops | 120ms | 4.5ms | 0.8ms | 27x - 150x |
+| Operation                 | Python | UHCR (AVX2) | UHCR (CUDA) | Speedup    |
+| ------------------------- | ------ | ----------- | ----------- | ---------- |
+| Vector Add (1M)           | 45ms   | 2.1ms       | 0.3ms       | 21x - 150x |
+| Matrix Multiply (512×512) | 890ms  | 18ms        | 3.2ms       | 49x - 278x |
+| Element-wise ops          | 120ms  | 4.5ms       | 0.8ms       | 27x - 150x |
 
-*Benchmarks run on Intel i7-10700K with NVIDIA RTX 3070*
+_Benchmarks run on Intel i7-10700K with NVIDIA RTX 3070_
 
 ---
 
@@ -262,4 +264,4 @@ Ready to use UHCR? Check out these resources:
 - [Plugin Guide](plugin-guide) — Extend UHCR with plugins
 - [Contributing](contributing) — Join the development
 
-[Get Started →](jit-guide){: .btn .btn-primary }
+[Get Started →](jit-guide)

@@ -750,5 +750,3 @@ setup(
 
 This comprehensive plugin guide provides everything needed to understand, develop, and distribute UHCR plugins effectively.
 
-[Next: How UHCR Works →](how-uhcr-works){: .btn .btn-primary }
-[Previous: Containerization ←](containerization){: .btn }

@@ -821,11 +821,6 @@ uhcr monitor
 Have questions or suggestions about the CLI?
 
 - 🐛 **Report a bug**: [GitHub Issues](https://github.com/VishveshJoshi89/UHCR/issues)
-- 💬 **Start a discussion**: [GitHub Discussions](https://github.com/VishveshJoshi89/UHCR/discussions)
-- 📖 **Improve docs**: Submit a pull request
+- 📖 **Improve docs**: [Pull Request](https://github.com/VishveshJoshi89/UHCR/pulls)
 
 ---
-
-**Last Updated:** June 8, 2026  
-**UHCR Version:** v1  
-**CLI Version:** v1.0.1
