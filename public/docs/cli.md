@@ -1,826 +1,347 @@
-# UHCR Command-Line Interface
+Complete UHCR CLI Command Reference
+Installation & Setup
 
----
-
-## Overview
-
-The `uhcr` CLI provides commands for:
-
-- 🔍 **Runtime Information** - Inspect hardware capabilities and backend selection
-- ⚡ **Benchmarking** - Run performance tests and compare execution profiles
-- 🖥️ **Server Management** - Deploy UHCR as a network service
-- 📊 **Analytics** - Analyze job execution and performance metrics
-- 🔬 **Monitoring** - Real-time runtime metrics and health checks
-
----
-
-## Installation
-
-The CLI is automatically installed with UHCR:
-
-```bash
-pip install uhcr
-```
-
-Verify installation:
-
-```bash
-uhcr --version
-```
-
-**Output:**
+# Install UHCR in development mode
 
 ```
-uhcr v1.0.1
+pip install -e .
 ```
-
----
-
-## Global Options
-
-Available for all commands:
-
-```bash
-uhcr [GLOBAL_OPTIONS] COMMAND [COMMAND_OPTIONS]
-```
-
-### Global Flags
-
-| Flag            | Description                                 |
-| --------------- | ------------------------------------------- |
-| `--version`     | Show UHCR version and exit                  |
-| `--help`, `-h`  | Display help message                        |
-| `--config PATH` | Load configuration from specified TOML file |
-
----
-
-## Commands
-
-### `uhcr info`
-
-Display runtime and backend information including Python version, UHCR version, CPU features, and selected backend.
-
-**Usage:**
-
-```bash
-uhcr info
-```
-
-**Output Example:**
-
-```
-UHCR Runtime
-============
-Python: 3.14.4
-UHCR version: v1
-Backend profile: x86_64
-CPU features: avx2, sse4_2, fma, popcnt
-CUDA available: False
-Selected backend: AVX2Backend
-```
-
-**Use Cases:**
-
-- Verify UHCR installation
-- Check hardware detection
-- Confirm backend selection
-- Troubleshoot performance issues
-
----
-
-### `uhcr benchmarks`
-
-Run the complete UHCR benchmark suite to measure performance across different operations and backends.
-
-**Usage:**
-
-```bash
-uhcr benchmarks [OPTIONS]
-```
-
-**Options:**
-
-| Option             | Type | Default | Description                                          |
-| ------------------ | ---- | ------- | ---------------------------------------------------- |
-| `--iterations INT` | int  | 100     | Number of iterations per benchmark                   |
-| `--warmup INT`     | int  | 10      | Warmup iterations before measurement                 |
-| `--output PATH`    | str  | stdout  | Write results to JSON file                           |
-| `--backend NAME`   | str  | auto    | Force specific backend (generic, avx2, avx512, cuda) |
-| `--format FORMAT`  | str  | table   | Output format: table, json, csv                      |
-
-**Examples:**
-
-Basic benchmark run:
-
-```bash
-uhcr benchmarks
-```
-
-Save results to JSON:
-
-```bash
-uhcr benchmarks --output results.json --format json
-```
-
-Test specific backend:
-
-```bash
-uhcr benchmarks --backend avx2 --iterations 1000
-```
-
-**Output:**
-
-```
-UHCR Benchmarks
-================
-Running 100 iterations...
-
-Simple Computation
-  Average: 24.56 µs
-  Min:     15.00 µs
-  Max:     64.60 µs
-  Throughput: 40,710 ops/sec
-
-Tensor Creation (10K elements)
-  Average: 1,263 µs
-  Min:     695 µs
-  Max:     4,008 µs
-  Throughput: 792 tensors/sec
-
-JIT Function Call
-  Average: 112.57 µs
-  Throughput: 8,883 calls/sec
-
-Loop Performance (1K iterations)
-  Average: 118.37 µs
-  Operations/sec: 8,448,086
-```
-
-**Benchmark Categories:**
-
-- Simple arithmetic operations
-- Tensor creation and allocation
-- JIT compilation overhead
-- Loop performance
-- Memory efficiency
-- Backend-specific operations
-
----
-
-### `uhcr serve`
-
-Start UHCR as a network service with gRPC and HTTP endpoints for remote execution.
-
-**Usage:**
-
-```bash
-uhcr serve [OPTIONS]
-```
-
-**Options:**
-
-| Option               | Type | Default             | Description                     |
-| -------------------- | ---- | ------------------- | ------------------------------- |
-| `--host HOST`        | str  | 0.0.0.0             | Bind address for server         |
-| `--grpc-port PORT`   | int  | 50051               | gRPC service port               |
-| `--http-port PORT`   | int  | 8080                | HTTP REST API port              |
-| `--workers INT`      | int  | 4                   | Number of worker threads        |
-| `--grace-period INT` | int  | 30                  | Shutdown grace period (seconds) |
-| `--redis-url URL`    | str  | None                | Redis cache URL                 |
-| `--sqlite-path PATH` | str  | None                | SQLite database path            |
-| `--config PATH`      | str  | ~/.uhcr/config.toml | Configuration file path         |
-
-**Examples:**
-
-Start server with defaults:
-
-```bash
-uhcr serve
-```
-
-Custom ports and workers:
-
-```bash
-uhcr serve --grpc-port 9090 --http-port 9091 --workers 8
-```
-
-Production deployment:
-
-```bash
-uhcr serve \
-  --host 10.0.0.1 \
-  --workers 16 \
-  --grace-period 60 \
-  --redis-url redis://localhost:6379/0 \
-  --sqlite-path /var/lib/uhcr/data.db
-```
-
-**Service Endpoints:**
-
-**gRPC (port 50051):**
-
-- `ExecuteFunction` - Execute JIT-compiled function
-- `CompileIR` - Compile IR module
-- `GetCapabilities` - Query hardware capabilities
-
-**HTTP REST API (port 8080):**
-
-- `GET /health` - Health check endpoint
-- `POST /execute` - Execute function
-- `GET /metrics` - Prometheus-compatible metrics
-- `GET /api/v1/status` - Runtime status
-
-**Health Check:**
-
-```bash
-curl http://localhost:8080/health
-```
-
-**Response:**
-
-```json
-{
-  "status": "healthy",
-  "version": "v1",
-  "uptime_seconds": 3600,
-  "active_workers": 4
-}
-```
-
----
-
-### `uhcr monitor`
-
-Real-time monitoring of UHCR runtime metrics including CPU usage, memory, active jobs, and performance statistics.
-
-**Usage:**
-
-```bash
-uhcr monitor [OPTIONS]
-```
-
-**Options:**
-
-| Option              | Type | Default | Description                        |
-| ------------------- | ---- | ------- | ---------------------------------- |
-| `--interval INT`    | int  | 2       | Update interval in seconds         |
-| `--json`            | flag | False   | Output in JSON format              |
-| `--metrics METRICS` | str  | all     | Comma-separated metrics to display |
-
-**Examples:**
-
-Basic monitoring:
-
-```bash
-uhcr monitor
-```
-
-JSON output with 5-second interval:
-
-```bash
-uhcr monitor --interval 5 --json
-```
-
-Specific metrics:
-
-```bash
-uhcr monitor --metrics cpu,memory,jobs
-```
-
-**Output:**
-
-```
-UHCR Monitor (updating every 2s)
-=================================
-
-CPU Usage:        23.4%
-Memory Used:      1.2 GB / 16.0 GB (7.5%)
-Active Jobs:      3
-Completed Jobs:   127
-Failed Jobs:      0
-
-Backend:          AVX2Backend
-Cache Hit Rate:   94.2%
-Avg Job Time:     45.2 ms
-
-Press Ctrl+C to exit
-```
-
-**JSON Output:**
-
-```json
-{
-  "timestamp": "2026-06-08T10:30:45Z",
-  "cpu_usage_percent": 23.4,
-  "memory_used_gb": 1.2,
-  "memory_total_gb": 16.0,
-  "active_jobs": 3,
-  "completed_jobs": 127,
-  "failed_jobs": 0,
-  "backend": "AVX2Backend",
-  "cache_hit_rate": 0.942,
-  "avg_job_time_ms": 45.2
-}
-```
-
-**Available Metrics:**
-
-- `cpu` - CPU usage percentage
-- `memory` - Memory usage
-- `jobs` - Job statistics
-- `backend` - Backend information
-- `cache` - Cache performance
-- `network` - Network metrics (if server running)
-- `all` - All metrics (default)
-
----
-
-### `uhcr analytics`
-
-Analyze job execution history, compare performance profiles, and generate performance reports.
-
-**Usage:**
-
-```bash
-uhcr analytics JOB_ID [OPTIONS]
-```
-
-**Arguments:**
-
-| Argument | Required | Description               |
-| -------- | -------- | ------------------------- |
-| `JOB_ID` | Yes      | Job identifier to analyze |
-
-**Options:**
-
-| Option              | Type | Default | Description                      |
-| ------------------- | ---- | ------- | -------------------------------- |
-| `--compare JOB_ID`  | str  | None    | Compare with another job         |
-| `--format FORMAT`   | str  | table   | Output format: table, json, html |
-| `--output PATH`     | str  | stdout  | Write report to file             |
-| `--metrics METRICS` | str  | all     | Specific metrics to include      |
-
-**Examples:**
-
-Analyze single job:
-
-```bash
-uhcr analytics job-12345
-```
-
-Compare two jobs:
-
-```bash
-uhcr analytics job-12345 --compare job-67890
-```
-
-Generate HTML report:
-
-```bash
-uhcr analytics job-12345 --format html --output report.html
-```
-
-**Output:**
-
-```
-Job Analytics: job-12345
-========================
-
-Execution Time:     142.3 ms
-Backend Used:       AVX2Backend
-CPU Time:           138.1 ms
-Memory Peak:        45.2 MB
-Cache Hits:         234 / 250 (93.6%)
-Compilation Time:   8.2 ms
-Execution Count:    1,000
-
-Top Operations:
-  matmul:     45.2 ms (31.8%)
-  add:        32.1 ms (22.6%)
-  relu:       18.4 ms (12.9%)
-
-Optimization Passes Applied:
-  ✓ Constant Folding
-  ✓ Dead Code Elimination
-  ✓ Common Subexpression Elimination
-  ✓ Strength Reduction
-```
-
-**Comparison Output:**
-
-```
-Job Comparison
-==============
-
-                    job-12345    job-67890    Difference
-Execution Time:     142.3 ms     165.8 ms     -14.2% ✓
-Memory Peak:        45.2 MB      52.3 MB      -13.6% ✓
-Cache Hit Rate:     93.6%        87.2%        +6.4%  ✓
-Backend:            AVX2         Generic      -
-```
-
----
-
-### `uhcr mcp`
-
-Start the UHCR Model Context Protocol (MCP) server for AI agent integration. Enables AI assistants to query documentation, search code examples, and get API references.
-
-**Usage:**
-
-```bash
-uhcr mcp [OPTIONS]
-```
-
-**Options:**
-
-| Option              | Type | Default   | Description                                     |
-| ------------------- | ---- | --------- | ----------------------------------------------- |
-| `--docs-path PATH`  | str  | ./docs    | Documentation directory path                    |
-| `--host HOST`       | str  | localhost | MCP server bind address                         |
-| `--port PORT`       | int  | 3000      | MCP server port                                 |
-| `--log-level LEVEL` | str  | INFO      | Logging level (DEBUG, INFO, WARN, ERROR)        |
-| `--cache`           | flag | False     | Enable documentation caching                    |
-| `--stdio`           | flag | False     | Use stdio transport (for direct AI integration) |
-
-**Examples:**
-
-Start MCP server:
-
-```bash
-uhcr mcp --docs-path docs/
-```
-
-Start with caching enabled:
-
-```bash
-uhcr mcp --docs-path docs/ --cache --log-level DEBUG
-```
-
-Start in stdio mode (for Claude Desktop/Kiro):
-
-```bash
-uhcr mcp --stdio
-```
-
-**Available MCP Tools:**
-
-The MCP server exposes these tools to AI agents:
-
-1. **`search_docs`** - Search documentation by keywords
-
-   ```json
-   {
-     "query": "jit compilation",
-     "category": "guides",
-     "max_results": 5
-   }
+# Verify installation
+
+uhcr --version # or uhcr -v
+📋 All Commands (16 total)
+
+1. Version & Help
+  ```
+   uhcr -v # Show version (v5.0.0)
+   uhcr --version # Show version
+   uhcr -h # Show help
+   uhcr --help # Show help
+   uhcr <command> -h # Help for specific command
    ```
+2. Hardware Detection (uhcr hw)
 
-2. **`get_code_examples`** - Extract code examples
-
-   ```json
-   {
-     "topic": "tensor operations",
-     "language": "python"
-   }
-   ```
-
-3. **`get_api_reference`** - Get API documentation
-
-   ```json
-   {
-     "api_name": "uhcr.tensor"
-   }
-   ```
-
-4. **`get_navigation_structure`** - Get docs hierarchy
-
-   ```json
-   {}
-   ```
-
-5. **`get_quick_reference`** - Get cheat sheets
-   ```json
-   {
-     "category": "jit"
-   }
-   ```
-
-**AI Assistant Configuration:**
-
-For Claude Desktop, add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "uhcr-docs": {
-      "command": "uhcr",
-      "args": ["mcp", "--stdio", "--docs-path", "/path/to/UHCR/docs"],
-      "env": {}
-    }
-  }
-}
+# Full hardware report with table
+```
+uhcr hw
 ```
 
-For Kiro, add to `.kiro/settings/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "uhcr-docs": {
-      "command": "uhcr",
-      "args": ["mcp", "--stdio"],
-      "autoApprove": ["search_docs", "get_code_examples"],
-      "disabled": false
-    }
-  }
-}
+# JSON format
+```
+uhcr hw --json
 ```
 
-**Testing MCP Server:**
+# Just the capability fingerprint
+```
+uhcr hw --fingerprint
+```
+Output includes: CPU, GPU, memory, cache topology, SIMD features, accelerators
 
-```bash
-# Start server
-uhcr mcp --docs-path docs/ --log-level DEBUG
+3. Docker Generation (uhcr docker)
 
-# In another terminal, test with curl (if using HTTP mode)
-curl http://localhost:3000/tools/search_docs \
-  -d '{"query": "tensor", "max_results": 3}'
+# Basic Dockerfile generation
+```
+uhcr docker script.py
 ```
 
-**Use Cases:**
-
-- Enable AI assistants to search UHCR documentation
-- Provide code examples to AI coding assistants
-- Allow AI agents to understand UHCR API
-- Support AI-powered documentation navigation
-- Enable conversational documentation queries
-
----
-
-## Configuration File
-
-UHCR can be configured via TOML file at `~/.uhcr/config.toml`.
-
-**Location Priority:**
-
-1. Path specified with `--config`
-2. `~/.uhcr/config.toml` (default)
-3. Built-in defaults
-
-**Example Configuration:**
-
-```toml
-[server]
-host = "0.0.0.0"
-grpc_port = 50051
-http_port = 8080
-workers = 4
-grace_period = 30
-
-# Optional: Redis cache
-redis_url = "redis://localhost:6379/0"
-
-# Optional: SQLite persistence
-sqlite_path = "/var/lib/uhcr/data.db"
-
-[benchmarks]
-iterations = 100
-warmup = 10
-output_format = "json"
-
-[monitoring]
-update_interval = 2
-metrics = ["cpu", "memory", "jobs"]
-
-[runtime]
-default_backend = "avx2"  # auto, generic, avx2, avx512, cuda
-cache_size_mb = 512
-enable_profiling = true
+# Custom image name and base
+```
+uhcr docker script.py --image myapp:v1 --base python:3.11-slim
 ```
 
-**Configuration Keys:**
-
-### `[server]`
-
-- `host` - Bind address (default: "0.0.0.0")
-- `grpc_port` - gRPC port (default: 50051)
-- `http_port` - HTTP port (default: 8080)
-- `workers` - Worker threads (default: 4)
-- `grace_period` - Shutdown timeout (default: 30)
-- `redis_url` - Redis cache connection
-- `sqlite_path` - SQLite database location
-
-### `[benchmarks]`
-
-- `iterations` - Benchmark iterations (default: 100)
-- `warmup` - Warmup iterations (default: 10)
-- `output_format` - Format: table, json, csv
-
-### `[monitoring]`
-
-- `update_interval` - Monitor refresh rate (default: 2)
-- `metrics` - Metrics to track
-
-### `[runtime]`
-
-- `default_backend` - Backend selection
-- `cache_size_mb` - JIT cache size
-- `enable_profiling` - Enable performance profiling
-
----
-
-## Environment Variables
-
-UHCR respects the following environment variables:
-
-| Variable         | Description                  | Default         |
-| ---------------- | ---------------------------- | --------------- |
-| `UHCR_HOME`      | UHCR configuration directory | `~/.uhcr`       |
-| `UHCR_BACKEND`   | Force backend selection      | auto            |
-| `UHCR_CACHE_DIR` | JIT cache directory          | `~/.uhcr/cache` |
-| `UHCR_LOG_LEVEL` | Logging level                | INFO            |
-| `UHCR_WORKERS`   | Default worker count         | 4               |
-| `UHCR_GRPC_PORT` | Default gRPC port            | 50051           |
-| `UHCR_HTTP_PORT` | Default HTTP port            | 8080            |
-
-**Example:**
-
-```bash
-export UHCR_BACKEND=avx2
-export UHCR_LOG_LEVEL=DEBUG
-uhcr serve
+# Compiled mode
+```
+uhcr docker script.py --compiled --output ./build
 ```
 
----
+# Full example
 
-## Exit Codes
+uhcr docker app.py --image mycompany/app:latest --base python:3.12-slim --output ./docker
+Generates: Dockerfile with UHCR and all plugins installed
 
-| Code | Meaning                       |
-| ---- | ----------------------------- |
-| 0    | Success                       |
-| 1    | General error                 |
-| 2    | Invalid arguments             |
-| 3    | Configuration error           |
-| 4    | Backend initialization failed |
-| 5    | Network error (server mode)   |
-| 130  | Interrupted (Ctrl+C)          |
+4. Kubernetes Manifest (uhcr k8s)
 
----
-
-## Examples
-
-### Development Workflow
-
-```bash
-# Check system capabilities
-uhcr info
-
-# Run benchmarks to establish baseline
-uhcr benchmarks --output baseline.json
-
-# Start development server
-uhcr serve --workers 2
-
-# Monitor performance
-uhcr monitor --interval 1
+# Basic K8s deployment
 ```
-
-### AI Assistant Integration
-
-```bash
-# Start MCP server for AI agents
-uhcr mcp --docs-path docs/ --cache
-
-# Or use stdio mode for direct integration
-uhcr mcp --stdio --docs-path docs/
+uhcr k8s script.py --image myapp:v1
 ```
+# With resources and replicas
 
-**Claude Desktop Integration:**
+uhcr k8s script.py --image myapp:v1 \
+ --replicas 3 \
+ --namespace production \
+ --cpu-request 100m \
+ --cpu-limit 500m \
+ --memory-request 256Mi \
+ --memory-limit 1Gi
 
-```json
-{
-  "mcpServers": {
-    "uhcr-docs": {
-      "command": "uhcr",
-      "args": ["mcp", "--stdio", "--docs-path", "/path/to/UHCR/docs"]
-    }
-  }
-}
+# Custom output directory
+
+uhcr k8s script.py --image myapp:v1 --output ./k8s-manifests
+Generates: deployment.yaml with proper resource requests/limits
+
+5. Compile (uhcr compile)
+
+# Basic compilation
 ```
+uhcr compile script.py
+```
+# With optimization level (0-3)
+```
+uhcr compile script.py --optimize 3
+```
+# Custom output name
+```
+uhcr compile [file].py --output mycompiled
+```
+# With target architecture
+```
+uhcr compile [file].py --target x86_64 --optimize 3
+```
+# Run compiled module
 
-### Production Deployment
+python script.uhcrc/
+Creates: Enterprise-grade compiled module with:
 
-```bash
-# Create configuration
-cat > ~/.uhcr/config.toml << EOF
-[server]
-host = "10.0.0.1"
-grpc_port = 50051
-http_port = 8080
-workers = 16
-grace_period = 60
-redis_url = "redis://redis-server:6379/0"
-sqlite_path = "/var/lib/uhcr/data.db"
-EOF
+Source code preservation
+SHA-256 checksums
+Metadata & provenance tracking
+README & LICENSE
+Integrity verification 6. Run (uhcr run)
 
-# Start server
+# Run with UHCR runtime
+```
+uhcr run [filename].py
+```
+# With JIT compilation
+
+uhcr run script.py --jit
+
+# Force specific backend
+
+uhcr run script.py --backend cuda
+uhcr run script.py --backend cpu
+
+# With specific plugins
+
+uhcr run script.py --plugin myplugin --plugin another
+
+# Disable all plugins
+
+uhcr run script.py --no-plugins
+
+# Pass arguments to script
+
+uhcr run script.py arg1 arg2 arg3 7. Optimize (uhcr optimize)
+
+# Optimize code
+
+uhcr optimize script.py
+
+# With optimization level
+
+uhcr optimize script.py --level 3
+
+# With profiling
+
+uhcr optimize script.py --profile
+
+# Custom output and report
+
+uhcr optimize script.py --output optimized.py --report report.txt --level 3 8. Server Management (uhcr serve / uhcr stop)
+
+# Start UHCR server
+
+uhcr serve --host 0.0.0.0 --grpc-port 50051 --http-port 8080 --workers 4
+
+# With config file
+
 uhcr serve --config ~/.uhcr/config.toml
 
-# Health check
-curl http://10.0.0.1:8080/health
+# With Redis and SQLite
 
-# Monitor in separate terminal
-uhcr monitor --json > metrics.log
-```
+uhcr serve --redis-url redis://localhost:6379 --sqlite-path /var/lib/uhcr/data.db
 
-### Performance Analysis
+# As daemon
 
-```bash
-# Run benchmarks with different backends
-uhcr benchmarks --backend generic --output generic.json
-uhcr benchmarks --backend avx2 --output avx2.json
-uhcr benchmarks --backend avx512 --output avx512.json
+uhcr serve --daemon
 
-# Compare results
-diff generic.json avx2.json
+# Stop server
 
-# Analyze specific job
-uhcr analytics job-abc123 --output report.html --format html
-```
+uhcr stop --port 50051
+uhcr stop --force 9. MCP Server (uhcr mcp_start / uhcr mcp_stop)
 
----
+# Start MCP server for AI agents
 
-## Troubleshooting
+uhcr mcp_start
 
-### Command Not Found
+# With custom port and transport
 
-**Problem:** `uhcr: command not found`
+uhcr mcp_start --transport http --port 3000
 
-**Solution:**
+# With logging and daemon mode
 
-```bash
-# Reinstall UHCR
-pip install --upgrade uhcr
+uhcr mcp_start --log-level DEBUG --daemon
 
-# Verify installation
-python -c "import uhcr; print(uhcr.__version__)"
+# Stop MCP server
 
-# Check PATH
-echo $PATH | grep -o ~/.local/bin
-```
+uhcr mcp_stop
+uhcr mcp_stop --port 3000 --force
+MCP Tools Available:
 
-### Server Won't Start
+compile_code
+optimize_code
+detect_hardware
+run_benchmark
+generate_docker
+generate_k8s
+analyze_performance
+list_backends
+manage_plugins 10. Plugin Management (uhcr plugin)
 
-**Problem:** Port already in use
+# List all plugins
 
-**Solution:**
+uhcr plugin list
 
-```bash
-# Check port usage
-lsof -i :50051
-lsof -i :8080
+# Plugin information
 
-# Use different ports
-uhcr serve --grpc-port 50052 --http-port 8081
-```
+uhcr plugin info example_plugin
 
-### Performance Issues
+# Enable/disable plugins
 
-**Problem:** Slow execution
+uhcr plugin enable myplugin
+uhcr plugin disable myplugin 11. Analytics (uhcr analytics)
 
-**Solution:**
+# View job analytics
 
-```bash
-# Check backend selection
+uhcr analytics job-123
+
+# Compare jobs
+
+uhcr analytics job-123 --compare job-456
+
+# Different output formats
+
+uhcr analytics job-123 --format json
+uhcr analytics job-123 --format html
+uhcr analytics job-123 --format table 12. Monitoring (uhcr monitor)
+
+# Monitor system resources
+
+uhcr monitor
+
+# Custom interval
+
+uhcr monitor --interval 2
+
+# JSON output
+
+uhcr monitor --json
+
+# Limited duration
+
+uhcr monitor --interval 1 --duration 60 13. Benchmarks (uhcr benchmark)
+
+# List available benchmarks
+
+uhcr benchmark --list
+
+# Run default benchmark
+
+uhcr benchmark
+
+# Run specific suite
+
+uhcr benchmark --suite tensor
+uhcr benchmark --suite simd
+uhcr benchmark --suite memory
+
+# Save results
+
+uhcr benchmark --suite tensor --output results.json 14. System Info (uhcr info)
+
+# Basic system info
+
 uhcr info
 
-# Force better backend
-export UHCR_BACKEND=avx2
-uhcr benchmarks
+# Show available backends
 
-# Monitor resource usage
-uhcr monitor
-```
+uhcr info --backends
 
----
+# Show installed plugins
 
-## See Also
+uhcr info --plugins 15. Test Suite (uhcr test)
 
-- [Quick Start Guide](quickstart) - Getting started with UHCR
-- [API Reference](api-reference) - Python API documentation
-- [Benchmarks](benchmarks) - Performance metrics
-- [Network Subsystem](network) - Distributed execution
-- [Containerization](containerization) - Docker/K8s deployment
-- [AI Agent Integration](ai-integration) - MCP server details
+# Run tests
 
----
+uhcr test
 
-## Feedback
+# With coverage
 
-Have questions or suggestions about the CLI?
+uhcr test --coverage
 
-- 🐛 **Report a bug**: [GitHub Issues](https://github.com/VishveshJoshi89/UHCR/issues)
-- 📖 **Improve docs**: [Pull Request](https://github.com/VishveshJoshi89/UHCR/pulls)
+# Verbose output
 
----
+uhcr test --verbose -v 16. Global Options
+
+# Enable debug mode (shows stack traces)
+
+export UHCR_DEBUG=1
+uhcr compile script.py
+
+# Disable integrity verification
+
+export UHCR_VERIFY_INTEGRITY=0
+python module.uhcrc/
+🎯 Common Workflows
+Development Workflow
+
+# 1. Check hardware
+
+uhcr hw --fingerprint
+
+# 2. Develop and test
+
+uhcr run app.py --jit
+
+# 3. Optimize
+
+uhcr optimize app.py --level 3 --profile
+
+# 4. Run tests
+
+uhcr test --coverage
+Production Deployment
+
+# 1. Compile for production
+
+uhcr compile app.py --optimize 3
+
+# 2. Generate Docker image
+
+uhcr docker app.uhcrc/ --image myapp:v1.0
+
+# 3. Generate K8s manifest
+
+uhcr k8s app.uhcrc/ --image myapp:v1.0 --replicas 5 --cpu-request 500m --memory-request 1Gi
+
+# 4. Deploy
+
+kubectl apply -f deployment.yaml
+AI Agent Integration
+
+# Start MCP server for AI agents
+
+uhcr mcp_start --transport http --port 3000 --daemon
+
+# AI agents can now use UHCR tools via MCP
+
+# Stop when done
+
+uhcr mcp_stop --port 3000
+📊 Quick Stats
+Total Commands: 16
+Enterprise Features: ✅ Security, Integrity, Auditing
+Containerization: ✅ Docker & Kubernetes
+AI Integration: ✅ MCP Server
+Hardware Detection: ✅ Full CPU/GPU/Memory profiling
