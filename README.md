@@ -3,7 +3,7 @@
 A high-performance Python framework for hardware-optimized computation, feature-rich JIT compilation, and execution across x86_64, AArch64, RISC-V, and CUDA accelerators.
 
 <p align="left">
-  <a href="https://uhcrdocs-one.vercel.app/"><img src="https://img.shields.io/badge/docs-Live%20Site-6C3FC5" alt="Docs"></a>
+  <a href="https://vishveshjoshi89.github.io/UHCR-DOCS/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-purple" alt="Docs"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0">
   <img src="https://img.shields.io/badge/react-19-61DAFB" alt="React 19">
