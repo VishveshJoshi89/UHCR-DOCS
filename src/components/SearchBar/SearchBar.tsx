@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { docRoutes } from '../../utils/navigation';
 import './SearchBar.css';
@@ -10,7 +10,7 @@ interface SearchBarProps {
 export function SearchBar({ onClose }: SearchBarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<typeof docRoutes>([]);
+
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -49,11 +49,10 @@ export function SearchBar({ onClose }: SearchBarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Perform search on query change
-  useEffect(() => {
+  // Derive search results from query (no effect needed for derived state)
+  const results = useMemo(() => {
     if (!query.trim()) {
-      setResults([]);
-      return;
+      return [];
     }
     const searchTerms = query.toLowerCase().split(' ');
     const filtered = docRoutes.filter((route) => {
@@ -65,7 +64,7 @@ export function SearchBar({ onClose }: SearchBarProps) {
       );
       return titleMatch || pathMatch;
     });
-    setResults(filtered.slice(0, 8)); // limit to 8 results
+    return filtered.slice(0, 8); // limit to 8 results
   }, [query]);
 
   const handleSelect = (path: string) => {
