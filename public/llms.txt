@@ -1,13 +1,10 @@
-# UHCR Documentation
-Welcome to the Universal Hardware Compilation Runtime (UHCR) documentation. 
+# Universal Hardware-Aware Compute Runtime
 
-## Navigation Map
-All documentation pages use hash-routing for static hosting safety.
+> The Universal Hardware-Aware Compute Runtime (UHCR) is a high-performance Python framework for hardware-optimized computation and JIT compilation.
 
-- Core Overview: https://vishveshjoshi89.github.io/UHCR-DOCS/#/
-- Getting Started Guide: https://vishveshjoshi89.github.io/UHCR-DOCS/#/docs/quickstart
-- Plugin Builder Workspace: https://vishveshjoshi89.github.io/UHCR-DOCS/#/plugin-builder
-- Working of UHCR: https://vishveshjoshi89.github.io/UHCR-DOCS/#/docs/how-uhcr-works
-
-## Project Architecture Notes
-UHCR provides an interactive runtime plugin builder environment for JIT compiling across CPU, GPU, and custom hardware backends.
+## Documentation
+- [Introduction](https://uhcr-docs.vercel.app/#/docs/introduction)
+- [How UHCR Works](https://uhcr-docs.vercel.app/#/docs/how-uhcr-works)
+- [Installation](https://uhcr-docs.vercel.app/#/docs/installation)
+- [Quick Start Guide](https://uhcr-docs.vercel.app/#/docs/quick-start)
+- [API Reference](https://uhcr-docs.vercel.app/#/docs/api)
