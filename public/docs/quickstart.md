@@ -1,68 +1,67 @@
 # Quick Start Guide
 
+## Executive Summary
+
+This guide provides a walk-through for setting up, writing, and executing your first program with the Universal Hardware-Aware Compute Runtime (UHCR). It covers basic JIT-compilation using decorators, hardware detection queries, working with the high-level Tensor API, configuring compilation modes (lazy vs. eager), and applying performance optimizations.
+
+## Table of Contents
+
+- [First Program Setup](#/docs/quickstart#first-program-setup)
+- [Working with Tensors](#/docs/quickstart#working-with-tensors)
+- [JIT Compilation Modes](#/docs/quickstart#jit-compilation-modes)
+- [Hardware Detection Query](#/docs/quickstart#hardware-detection-query)
+- [Performance Optimization Tips](#/docs/quickstart#performance-optimization-tips)
+- [Common Design Patterns](#/docs/quickstart#common-design-patterns)
+- [Limitations](#/docs/quickstart#limitations)
+- [Troubleshooting](#/docs/quickstart#troubleshooting)
+
 ---
 
-## Installation
+## First Program Setup
 
-Install UHCR using pip:
-
-```bash
-pip install uhcr
-```
-
-**Requirements:**
-- Python 3.10 or higher
-- Windows, Linux, or macOS
-- (Optional) NVIDIA GPU with CUDA for GPU acceleration
-
----
-
-## Your First Program
-
-Create a file called `hello_uhcr.py`:
+To verify your installation and trace a simple arithmetic function, create a file named `hello_uhcr.py`:
 
 ```python
 import uhcr
 
-# Detect hardware capabilities
+# 1. Detect hardware capabilities
 profile = uhcr.detect()
-print(f"Running on: {profile.cpu.brand}")
-print(f"Features: {', '.join(profile.cpu.features[:5])}")
+print(f"Executing on: {profile.cpu.brand}")
+print(f"Supported SIMD Features: {', '.join(profile.cpu.features[:5])}")
 
-# Create a JIT-compiled function
+# 2. Define a function for JIT compilation
 @uhcr.jit(eager=True, verbose=True)
 def add_and_multiply(a, b):
     return (a + b) * 2
 
-# Call the function (compiles on first call)
+# 3. Invoke the function (triggers dynamic compilation)
 result = add_and_multiply(10, 11)
-print(f"Result: {result}")  # Output: 42
+print(f"Calculation Result: {result}")
 ```
 
-Run it:
-
+Run the script from your terminal:
 ```bash
 python hello_uhcr.py
 ```
 
-**Expected output:**
+### Expected Output
 ```
-Running on: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
-Features: sse, sse2, sse3, ssse3, sse4_1
+Executing on: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
+Supported SIMD Features: sse, sse2, sse3, ssse3, sse4_1
 [uhcr.jit] Compiled 'add_and_multiply' for signature (('int',), ('int',))
-Result: 42
+Calculation Result: 42
 ```
 
 ---
 
 ## Working with Tensors
 
-UHCR provides a high-level tensor API:
+UHCR provides an optimized, N-dimensional Tensor class that targets high-performance CPU SIMD operations and CUDA GPUS. It handles memory alignment (64-byte boundaries) and memory pooling under the hood.
 
 ```python
 import uhcr
 
-# Create tensors
+# Initialize Tensors from Python lists
 a = uhcr.tensor([[1.0, 2.0, 3.0],
                  [4.0, 5.0, 6.0]])
 
@@ -70,17 +69,17 @@ b = uhcr.tensor([[7.0, 8.0],
                  [9.0, 10.0],
                  [11.0, 12.0]])
 
-# Matrix multiplication (automatically uses best backend)
+# Dispatch matrix multiplication (routes to the best available backend)
 c = a.matmul(b)
 
-print(f"Shape: {c.shape}")
-print(f"Result:\n{c.to_numpy()}")
+print(f"Result Tensor Shape: {c.shape}")
+print(f"Output Matrix:\n{c.to_numpy()}")
 ```
 
-**Output:**
+### Expected Output
 ```
-Shape: (2, 2)
-Result:
+Result Tensor Shape: (2, 2)
+Output Matrix:
 [[ 58.  64.]
  [139. 154.]]
 ```
@@ -89,260 +88,140 @@ Result:
 
 ## JIT Compilation Modes
 
-### Lazy Compilation (Default)
+UHCR JIT compilation operates in one of two execution modes:
 
-Compiles after 3 calls (warmup period):
+### 1. Lazy Compilation (Default)
+Executes through Python interpretation for a warm-up period (default: 3 calls) to inspect signatures before building and compiling the IR.
 
 ```python
 @uhcr.jit
 def compute(x, y):
     return x * y + x
 
-compute(5, 3)   # Python execution
-compute(7, 2)   # Python execution
-compute(9, 4)   # Compiled! Native execution from now on
+compute(5, 3)   # Warm-up call 1 (Python Interpreter)
+compute(7, 2)   # Warm-up call 2 (Python Interpreter)
+compute(9, 4)   # Compilation triggered! Native execution from here on
 ```
 
-### Eager Compilation
-
-Compiles on first call:
+### 2. Eager Compilation
+Bypasses the warm-up checks and compiles the function to native code immediately upon the first invocation.
 
 ```python
 @uhcr.jit(eager=True)
 def compute(x, y):
     return x * y + x
 
-compute(5, 3)   # Compiled immediately!
-```
-
-### Verbose Mode
-
-See compilation messages:
-
-```python
-@uhcr.jit(eager=True, verbose=True)
-def compute(x, y):
-    return x * y + x
-
-compute(5, 3)
-# [uhcr.jit] Compiled 'compute' for signature (('int',), ('int',))
+compute(5, 3)   # Compiled and run natively on first execution
 ```
 
 ---
 
-## Hardware Detection
+## Hardware Detection Query
 
-Check what hardware UHCR detected:
+You can programmatically query UHCR to inspect the target system's performance profiles:
 
 ```python
 import uhcr
 
 profile = uhcr.detect()
 
-# CPU information
-print(f"CPU: {profile.cpu.brand}")
-print(f"Cores: {profile.cpu.cores}")
-print(f"Threads: {profile.cpu.threads}")
-print(f"Has AVX2: {profile.cpu.has_avx2}")
-print(f"Has AVX512: {profile.cpu.has_avx512}")
+# Print CPU Profile
+print(f"CPU Model: {profile.cpu.brand}")
+print(f"Cohesion: Cores={profile.cpu.cores}, Threads={profile.cpu.threads}")
+print(f"Vector Support: AVX2={profile.cpu.has_avx2}, AVX512={profile.cpu.has_avx512}")
 
-# Memory information
-print(f"\nRAM: {profile.memory.total_bytes / (1024**3):.1f} GB")
-print(f"Type: {profile.memory.memory_type}")
-print(f"Speed: {profile.memory.speed_mhz} MHz")
+# Print Cache Hierarchy
+print(f"Cache Details: L1={profile.cpu.cache_l1_data_kb}KB, L2={profile.cpu.cache_l2_kb}KB, L3={profile.cpu.cache_l3_kb}KB")
 
-# GPU information
-print(f"\nGPU: {profile.gpu.name}")
+# Print GPU Profiles
+print(f"GPU Model: {profile.gpu.name}")
 print(f"CUDA Available: {profile.gpu.cuda_available}")
 if profile.gpu.cuda_available:
-    print(f"CUDA Version: {profile.gpu.cuda_version}")
-
-# Cache information
-print(f"\nL1 Data Cache: {profile.cpu.cache_l1_data_kb} KB")
-print(f"L2 Cache: {profile.cpu.cache_l2_kb} KB")
-print(f"L3 Cache: {profile.cpu.cache_l3_kb} KB")
+    print(f"CUDA SDK Version: {profile.gpu.cuda_version}")
 ```
 
 ---
 
-## Backend Selection
+## Performance Optimization Tips
 
-UHCR automatically selects the best backend:
+1. **Avoid In-Loop Instantiations**: Do not instantiate new Tensors inside tight loops. Pre-allocate buffer spaces.
+   ```python
+   # Correct
+   a = uhcr.tensor([1.0, 2.0, 3.0])
+   for i in range(1000):
+       a.matmul(a)
+   ```
+2. **Reuse Allocations**: Let UHCR reuse existing compiled signatures rather than dynamically defining functions inside other functions.
+3. **Set Core Pins**: For multi-threaded CPU workloads, align worker counts with physical cores to prevent thread hopping.
 
+---
+
+## Common Design Patterns
+
+### Pattern 1: Batch Math Loops
 ```python
 import uhcr
 
-# The runtime picks the best backend automatically
-profile = uhcr.detect()
+@uhcr.jit(eager=True)
+def scale_inputs(x):
+    return x * 2.5 + 0.5
 
-if profile.gpu.cuda_available:
-    print("Using CUDA backend for GPU acceleration")
-elif profile.cpu.has_avx512:
-    print("Using AVX512 backend")
-elif profile.cpu.has_avx2:
-    print("Using AVX2 backend")
-else:
-    print("Using generic CPU backend")
+# Feed collection data
+raw_elements = [1.0, 2.0, 3.0, 4.0]
+results = [scale_inputs(val) for val in raw_elements]
 ```
 
-You can also check which backends are available:
-
+### Pattern 2: Dynamic Type Dispatch
 ```python
-from uhcr.backends.backend_selector import get_available_backends
+import uhcr
 
-backends = get_available_backends(profile)
-for backend in backends:
-    print(f"{backend.name}: priority {backend.priority}")
+@uhcr.jit(eager=True)
+def multiply_add(a, b):
+    return a * b + 1.0
+
+# Each unique argument type creates a separate native signature
+res_int = multiply_add(10, 2)      # Compiled for integers
+res_float = multiply_add(10.5, 2.1)  # Compiled for floats
 ```
 
 ---
 
-## Performance Tips
+## Limitations
 
-### 1. Use Eager Compilation for Hot Paths
-
-```python
-@uhcr.jit(eager=True)  # Compile immediately
-def critical_function(x, y):
-    return x * y + x
-```
-
-### 2. Reuse Tensors
-
-```python
-# Good: Reuse tensor objects
-a = uhcr.tensor([1.0, 2.0, 3.0])
-for i in range(1000):
-    result = a.matmul(a)
-
-# Avoid: Creating new tensors in loops
-for i in range(1000):
-    a = uhcr.tensor([1.0, 2.0, 3.0])  # Slow!
-    result = a.matmul(a)
-```
-
-### 3. Let UHCR Choose the Backend
-
-Don't force a specific backend unless you have a good reason. UHCR's automatic selection is usually optimal.
-
-### 4. Profile Your Code
-
-Use Python's built-in profiling tools:
-
-```python
-import time
-import uhcr
-
-@uhcr.jit(eager=True)
-def compute(a, b):
-    return (a + b) * 2
-
-# Warmup
-compute(10, 20)
-
-# Benchmark
-start = time.perf_counter()
-for _ in range(1000000):
-    compute(10, 20)
-end = time.perf_counter()
-
-print(f"Time: {(end - start) * 1000:.2f} ms")
-```
-
----
-
-## Common Patterns
-
-### Pattern 1: Batch Processing
-
-```python
-import uhcr
-
-@uhcr.jit(eager=True)
-def process_item(x):
-    return x * 2 + 10
-
-# Process a batch
-data = [1, 2, 3, 4, 5]
-results = [process_item(x) for x in data]
-```
-
-### Pattern 2: Matrix Operations
-
-```python
-import uhcr
-
-# Create matrices
-A = uhcr.tensor([[1.0, 2.0], [3.0, 4.0]])
-B = uhcr.tensor([[5.0, 6.0], [7.0, 8.0]])
-
-# Compute: C = A @ B + A
-C = A.matmul(B) + A
-```
-
-### Pattern 3: Type-Specific Functions
-
-```python
-import uhcr
-
-@uhcr.jit(eager=True)
-def process_ints(a, b):
-    return a + b
-
-@uhcr.jit(eager=True)
-def process_floats(a, b):
-    return a + b
-
-# Each gets compiled separately
-result1 = process_ints(10, 20)      # int version
-result2 = process_floats(10.5, 20.5)  # float version
-```
-
----
-
-## Next Steps
-
-Now that you've got the basics, explore more advanced features:
-
-- **[JIT Guide](jit-guide)** — Deep dive into JIT compilation
-- **[API Reference](api-reference)** — Complete API documentation
-- **[Features](features)** — Explore all UHCR capabilities
-- **[Plugin Guide](plugin-guide)** — Extend UHCR with custom plugins
-- **[Hardware Detection](hardware-reference)** — Detailed hardware detection reference
+- **Warm-Up Overhead**: The first native compilation pass introduces a small latency penalty. Avoid compiling short-lived scripts.
+- **Limited Control Flow**: Python `try/except` and resource management constructs (`with` blocks) are not supported inside `@uhcr.jit` decorated code paths.
 
 ---
 
 ## Troubleshooting
 
-### Import Error
-
+### Module Missing
 ```
 ModuleNotFoundError: No module named 'uhcr'
 ```
-
-**Solution:** Make sure UHCR is installed:
+*Solution*: Ensure you install the package in the active environment:
 ```bash
 pip install uhcr
 ```
 
-### Compilation Warnings
-
-If you see warnings about unsupported operations, the function will fall back to Python execution. This is normal for complex functions.
-
-### Performance Issues
-
-If performance is slower than expected:
-1. Check that JIT compilation is actually happening (use `verbose=True`)
-2. Verify hardware detection: `uhcr.detect()`
-3. Make sure you're not creating tensors in tight loops
-4. Profile your code to find bottlenecks
+### Non-Vectorized execution
+If the logs indicate fallbacks to standard CPU interpreter mode:
+1. Verify the C++ safety monitor is compiled.
+2. Confirm the CPU supports AVX2: `uhcr.detect().cpu.has_avx2`.
 
 ---
 
-## Getting Help
+## Related Documentation
 
-- **GitHub Issues:** [Report bugs or request features](https://github.com/VishveshJoshi89/UHCR/issues)
-- **Documentation:** [Full documentation](https://vishveshjoshi89.github.io/UHCR-DOCS/)
-- **Contributing:** [Contribution guide](contributing)
+- [Installation Guide](#/docs/installation)
+- [How UHCR Works](#/docs/how-uhcr-works)
+- [JIT Compilation Guide](#/docs/jit-guide)
+- [API Reference](#/docs/api-reference)
 
-[View on GitHub](https://github.com/VishveshJoshi89/UHCR)
+## Next Steps
+
+Continue with:
+
+- Previous: [Installation Guide](#/docs/installation)
+- Home: [Documentation Home](#/)
+- Next: [How UHCR Works](#/docs/how-uhcr-works)

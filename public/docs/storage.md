@@ -1,113 +1,154 @@
-# Storage Subsystem
+# Storage and Caching Subsystem
 
-The Storage Subsystem (`uhcr.storage`) provides high-performance caching, persistence, and memory management for UHCR 
+## Executive Summary
 
-## Overview
+The UHCR Storage Subsystem (`uhcr.storage`) manages caching, metadata persistence, and memory allocation. It uses a multi-tier storage design, including pre-allocated memory pools, high-speed Redis caches, SQLite database layers, and I/O optimization pipelines. This system ensures fast binary load times, data integrity, and low-latency execution.
 
-The storage layer is designed to:
-- **Cache compiled kernels** for fast reuse across multiple invocations
-- **Persist execution metadata** for auditing and recovery
-- **Optimize memory allocation** with pre-allocated pools
-- **Accelerate I/O operations** with batching and compression
-- **Verify data integrity** with checksums
+## Table of Contents
 
-## Components
+- [Subsystem Architecture](#/docs/storage#subsystem-architecture)
+- [Memory Pool Manager](#/docs/storage#memory-pool-manager)
+- [Redis Cache Layer](#/docs/storage#redis-cache-layer)
+- [SQLite Persistence Backend](#/docs/storage#sqlite-persistence-backend)
+- [I/O Optimizer](#/docs/storage#io-optimizer)
+- [Data Integrity & Checksum Verification](#/docs/storage#data-integrity--checksum-verification)
+- [Usage Patterns & Code Examples](#/docs/storage#usage-patterns--code-examples)
+- [Best Practices](#/docs/storage#best-practices)
+- [Troubleshooting](#/docs/storage#troubleshooting)
 
-### Memory Pool Manager (`memory_pool.py`)
+---
 
-Manages a pre-allocated pool of aligned buffers to reduce allocation overhead.
+## Subsystem Architecture
+
+The storage subsystem coordinates memory allocations and binary caching through a unified management layer:
+
+```
+                  ┌───────────────────────┐
+                  │   StorageOptimizer    │
+                  └───────────┬───────────┘
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+   │ MemoryPool  │     │ RedisCache  │     │ SQLiteStore │
+   │ (Local RAM) │     │ (Shared KV) │     │ (Disk DB)   │
+   └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+---
+
+## Memory Pool Manager
+
+To avoid memory fragmentation and system allocation latencies during execution, the `MemoryPool` pre-allocates contiguous memory blocks aligned to 64-byte boundaries.
+
+- **Component**: `uhcr/storage/memory_pool.py`
+- **Class**: `MemoryPool`
+- **Alignment**: 64-byte boundary alignment (SIMD safe).
+- **Thread Safety**: Implements reentrant locks (`RLock`) to support parallel allocations.
 
 ```python
 from uhcr.storage.memory_pool import MemoryPool
 
-pool = MemoryPool(buffer_size=1024*1024, num_buffers=100)
+# Create pool with 100 buffers of 1MB each
+pool = MemoryPool(buffer_size=1024 * 1024, num_buffers=100)
+
+# Acquire a buffer
 buf = pool.acquire()
-# ... use buffer ...
+# Write data...
+# Release buffer back to the pool
 pool.release(buf)
 ```
 
-**Features:**
-- Pre-allocated `AlignedBuffer` instances (64-byte alignment)
-- Fragmentation tracking and defragmentation
-- Thread-safe acquire/release operations
-- Automatic cleanup on context exit
+---
 
-### Redis Cache Layer (`redis_cache.py`)
+## Redis Cache Layer
 
-High-speed distributed caching for compiled code and intermediate results.
+The Redis Cache layer provides a shared cache for JIT-compiled binaries in clustered or multi-process deployments.
+
+- **Component**: `uhcr/storage/redis_cache.py`
+- **Class**: `RedisCache`
+- **Serialization**: Encodes binary formats using LZ4 and base64.
 
 ```python
 from uhcr.storage.redis_cache import RedisCache
 
+# Connect to Redis
 cache = RedisCache(host='localhost', port=6379, db=0)
-cache.set('kernel_hash', compiled_binary, ttl=3600)
-binary = cache.get('kernel_hash')
+
+# Cache a compiled binary with a 1-hour Time-To-Live (TTL)
+cache.set('kernel_hash_avx2', compiled_bytes, ttl=3600)
 ```
 
-**Features:**
-- Key-value storage with TTL support
-- Automatic serialization/deserialization
-- Connection pooling
-- Cluster support for distributed deployments
+---
 
-### SQLite Persistence (`sqlite_backend.py`)
+## SQLite Persistence Backend
 
-Durable storage for job execution metrics, histories, and server state.
+The SQLite persistence backend stores job metadata, execution metrics, and historical runs.
+
+- **Component**: `uhcr/storage/sqlite_backend.py`
+- **Class**: `SQLiteStore`
+- **Data Schema**: Stores `job_id`, `status`, `duration`, `vram_allocated`, and `timestamp`.
 
 ```python
 from uhcr.storage.sqlite_backend import SQLiteStore
 
-store = SQLiteStore(db_path='uhcr.db')
-store.record_job(job_id, status, duration, result)
-history = store.get_job_history(limit=100)
+# Open SQLite database
+store = SQLiteStore(db_path='uhcr_jobs.db')
+
+# Record job metadata
+store.record_job(
+    job_id='job_99824',
+    status='completed',
+    duration=0.045,  # seconds
+    result={'output_shape': (200, 200)}
+)
 ```
 
-**Features:**
-- Job execution tracking (queued, running, completed, failed)
-- Performance metrics (duration, memory, throughput)
-- Query interface for analytics
-- Automatic schema initialization
+---
 
-### I/O Optimizer (`io_optimizer.py`)
+## I/O Optimizer
 
-Combines memory-mapped I/O, LZ4 compression, and batched writes for fast disk/network transfers.
+The I/O Optimizer uses memory-mapped files and LZ4 compression to speed up disk operations.
+
+- **Component**: `uhcr/storage/io_optimizer.py`
+- **Class**: `IOOptimizer`
 
 ```python
 from uhcr.storage.io_optimizer import IOOptimizer
 
-optimizer = IOOptimizer(batch_size=1000, compression='lz4')
-optimizer.write_batch(data_list)
-result = optimizer.read_mmap(file_path)
+# Setup optimizer
+optimizer = IOOptimizer(batch_size=5000, compression='lz4')
+
+# Write batch data efficiently
+optimizer.write_batch(dataset_list, output_file='dataset.bin')
+
+# Read data using memory mapping (zero copy)
+data = optimizer.read_mmap('dataset.bin')
 ```
 
-**Features:**
-- Memory-mapped file I/O for zero-copy reads
-- LZ4 compression for bandwidth optimization
-- Batched writes to reduce syscall overhead
-- Async I/O support with asyncio
+---
 
-### Checksum Validator (`checksum.py`)
+## Data Integrity & Checksum Verification
 
-SHA256-based integrity verification for cached kernels and data.
+To prevent execution of corrupted or tampered JIT binaries, the storage layer uses SHA256 checksums to verify files before loading them into memory.
+
+- **Component**: `uhcr/storage/checksum.py`
+- **Class**: `ChecksumValidator`
 
 ```python
 from uhcr.storage.checksum import ChecksumValidator
 
 validator = ChecksumValidator()
-checksum = validator.compute(data)
-is_valid = validator.verify(data, checksum)
+checksum = validator.compute(compiled_bytes)
+
+# Verify checksum
+assert validator.verify(compiled_bytes, checksum) is True
 ```
 
-**Features:**
-- SHA256 hashing for integrity verification
-- Streaming hash computation for large files
-- Checksum caching to avoid recomputation
-- Mismatch detection and reporting
+---
 
-## Usage Patterns
+## Usage Patterns & Code Examples
 
-### Caching Compiled Kernels
-
+### End-to-End JIT Caching Flow
 ```python
 import uhcr
 from uhcr.storage.redis_cache import RedisCache
@@ -117,82 +158,56 @@ cache = RedisCache()
 validator = ChecksumValidator()
 
 @uhcr.jit
-def compute(a, b):
-    return a + b
+def vector_add(x, y):
+    return x + y
 
-# First call: compile and cache
-result1 = compute(10, 20)
+# First call compiles and caches the binary
+res1 = vector_add(10, 20)
 
-# Second call: retrieve from cache
-result2 = compute(10, 20)  # Fast!
+# Second call loads the compiled binary directly from the cache
+res2 = vector_add(10, 20)
 ```
 
-### Persisting Job History
+---
 
-```python
-from uhcr.storage.sqlite_backend import SQLiteStore
+## Best Practices
 
-store = SQLiteStore('jobs.db')
+1. **Pre-allocate Pool Size**: Set the memory pool size to accommodate peak workloads, reducing runtime system allocation calls.
+2. **Implement Cache TTLs**: Use Time-To-Live (TTL) limits in Redis to manage cache size and prevent memory growth.
+3. **Index Database Tables**: Ensure SQLite tables are indexed on query keys (such as `job_id` and `timestamp`) to maintain performance.
 
-# Record job execution
-store.record_job(
-    job_id='job_123',
-    status='completed',
-    duration=1.23,
-    result={'output': [1, 2, 3]}
-)
+---
 
-# Query history
-history = store.get_job_history(limit=50)
-for job in history:
-    print(f"{job['job_id']}: {job['status']} ({job['duration']}s)")
+## Troubleshooting
+
+### Connection Timeouts
+```
+redis.exceptions.ConnectionError: Error connecting to localhost:6379.
+```
+*Solution*: Verify the Redis server is running and accessible using `redis-cli ping`.
+
+### Database Locks
+```
+sqlite3.OperationalError: database is locked
+```
+*Solution*: SQLite supports limited concurrent write operations. Increase the timeout limit or switch to a WAL (Write-Ahead Log) mode:
+```sql
+PRAGMA journal_mode=WAL;
 ```
 
-### Optimized Batch I/O
+---
 
-```python
-from uhcr.storage.io_optimizer import IOOptimizer
+## Related Documentation
 
-optimizer = IOOptimizer(batch_size=5000, compression='lz4')
+- [Runtime Architecture Overview](#/docs/architecture)
+- [Runtime Execution Engine](#/docs/runtime)
+- [Distributed Networking](#/docs/network)
+- [Performance Tuning and Benchmarks](#/docs/benchmarks)
 
-# Write large dataset efficiently
-data = [{'id': i, 'value': i*2} for i in range(100000)]
-optimizer.write_batch(data, output_file='data.bin')
+## Next Steps
 
-# Read with zero-copy memory mapping
-result = optimizer.read_mmap('data.bin')
-```
+Continue with:
 
-## Configuration
-
-Storage components can be configured via environment variables or programmatically:
-
-```python
-import os
-from uhcr.storage.redis_cache import RedisCache
-
-# Via environment
-os.environ['UHCR_REDIS_HOST'] = 'redis.example.com'
-os.environ['UHCR_REDIS_PORT'] = '6379'
-
-# Via constructor
-cache = RedisCache(
-    host='redis.example.com',
-    port=6379,
-    db=0,
-    password='secret'
-)
-```
-
-## Performance Considerations
-
-- **Memory Pool**: Pre-allocate based on expected workload to minimize allocation latency
-- **Redis Cache**: Use TTL to prevent unbounded memory growth; consider cluster mode for HA
-- **SQLite**: Index frequently-queried columns (job_id, status, timestamp)
-- **I/O Optimizer**: Tune batch_size based on data size and network latency
-- **Checksums**: Cache computed checksums to avoid recomputation on repeated verifications
-
-## See Also
-
-- [Architecture](architecture) — System design overview
-- [API Reference](api-reference) — Complete API documentation
+- Previous: [Runtime Execution Engine](#/docs/runtime)
+- Home: [Documentation Home](#/)
+- Next: [Hardware Reference](#/docs/hardware-reference)

@@ -1,17 +1,29 @@
-# Network Subsystem
+# Distributed Networking
 
-The Network Subsystem (`uhcr.network`) enables distributed execution of UHCR computations across multiple machines in UHCR.
+## Executive Summary
 
-## Overview
+The UHCR Network Subsystem (`uhcr.network`) facilitates high-performance distributed task execution across heterogeneous compute clusters. It provides a hybrid communication protocol consisting of gRPC for low-latency, high-throughput model execution/metrics streaming, and REST (HTTP) for configuration management, health telemetry, and standard integration. A hardware-aware coordinator assigns tasks to worker nodes based on their specialized capabilities (e.g., AVX2, AVX-512, CUDA) and tracks job state transition phases.
 
-The network layer provides:
-- **Dual-protocol coordination** (gRPC for performance, REST for compatibility)
-- **Job scheduling and tracking** across distributed workers
-- **Health monitoring** and automatic failover
-- **Performance telemetry** collection and aggregation
-- **Worker orchestration** with hardware-aware routing
+## Table of Contents
 
-## Architecture
+- [Architectural Design](#/docs/network#architectural-design)
+- [Protocol Server Coordinator](#/docs/network#protocol-server-coordinator)
+- [REST API Endpoints](#/docs/network#rest-api-endpoints)
+- [gRPC Service Definition](#/docs/network#grpc-service-definition)
+- [Job Lifecycle Manager](#/docs/network#job-lifecycle-manager)
+- [Coordinator Node Routing](#/docs/network#coordinator-node-routing)
+- [Worker Node Daemon](#/docs/network#worker-node-daemon)
+- [Health Monitoring & Diagnostics](#/docs/network#health-monitoring--diagnostics)
+- [Telemetry & Metrics Collection](#/docs/network#telemetry--metrics-collection)
+- [Best Practices](#/docs/network#best-practices)
+- [Limitations](#/docs/network#limitations)
+- [Troubleshooting](#/docs/network#troubleshooting)
+
+---
+
+## Architectural Design
+
+The network architecture operates on a coordinator-worker topology. The client application submits jobs to the coordinator, which analyzes the hardware requirements and routes the job to the most appropriate worker.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -44,11 +56,11 @@ The network layer provides:
     └──────────────┘      └───────────┘
 ```
 
-## Components
+---
 
-### Protocol Server (`protocol_server.py`)
+## Protocol Server Coordinator
 
-Central coordinator managing both gRPC and REST endpoints.
+The central daemon `ProtocolServer` listens on both gRPC and HTTP ports, orchestrating communication pools and thread allocation.
 
 ```python
 from uhcr.network.protocol_server import ProtocolServer
@@ -61,92 +73,91 @@ server = ProtocolServer(
 server.start()
 ```
 
-**Features:**
-- Unified gRPC and REST interface
-- Connection pooling and load balancing
-- Request routing to appropriate workers
-- Graceful shutdown with connection draining
+### Key Capabilities
+- **Dual-stack binding**: Serves gRPC and HTTP API concurrently.
+- **Graceful shutdown**: Integrates connection draining (`grace_period` default: 30s) to allow ongoing jobs to complete.
+- **Worker Registry**: Tracks active workers, their network addresses, and hardware capabilities.
 
-### REST API Server (`rest_api.py`)
+---
 
-HTTP endpoints for job submission and status queries.
+## REST API Endpoints
 
-```python
-# Submit a job
-POST /api/v1/jobs
-{
-  "code": "def compute(a, b): return a + b",
-  "args": [10, 20],
-  "hardware_hint": "avx2"
+The HTTP REST API is utilized for administration, health check inspection, and client integration with third-party tools.
+
+### Endpoint Matrix
+
+| Method | Path | Description | Input Schema | Response Schema |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/jobs` | Submit remote execution job | `{"code": str, "args": list, "hardware_hint": str}` | `{"job_id": str, "status": "queued"}` |
+| `GET` | `/api/v1/jobs/{id}` | Query execution status & results | None | `{"job_id": str, "status": str, "result": any}` |
+| `GET` | `/api/v1/jobs` | List active and historical jobs | None | `{"jobs": list}` |
+| `DELETE` | `/api/v1/jobs/{id}` | Abort/Cancel running job | None | `{"job_id": str, "status": "cancelled"}` |
+| `GET` | `/api/v1/metrics` | Retrieve Prometheus-formatted telemetry | None | Telemetry raw text |
+| `GET` | `/api/v1/health` | Liveness check | None | `{"status": "healthy", "uptime": int}` |
+
+---
+
+## gRPC Service Definition
+
+For high-throughput JIT execution and zero-copy metric streaming, the system employs gRPC over HTTP/2.
+
+```protobuf
+syntax = "proto3";
+
+package uhcr.network;
+
+service UHCRService {
+  rpc SubmitJob(JobRequest) returns (JobResponse);
+  rpc GetJobStatus(StatusRequest) returns (StatusResponse);
+  rpc CancelJob(CancelRequest) returns (CancelResponse);
+  rpc StreamMetrics(MetricsRequest) returns (stream MetricsFrame);
+  rpc RegisterWorker(WorkerRegisterRequest) returns (WorkerRegisterResponse);
 }
-
-# Query job status
-GET /api/v1/jobs/{job_id}
-
-# Get metrics
-GET /api/v1/metrics
 ```
-
-**Endpoints:**
-- `POST /api/v1/jobs` — Submit a new job
-- `GET /api/v1/jobs/{job_id}` — Query job status
-- `GET /api/v1/jobs` — List all jobs
-- `DELETE /api/v1/jobs/{job_id}` — Cancel a job
-- `GET /api/v1/metrics` — Retrieve performance metrics
-- `GET /api/v1/health` — Health check
-
-### gRPC Service (`grpc_service.py`)
-
-High-performance RPC for distributed compute with streaming support.
 
 ```python
 from uhcr.network.grpc_service import UHCRServicer
 
 class UHCRImpl(UHCRServicer):
     def SubmitJob(self, request, context):
-        # Handle job submission
-        pass
-    
-    def GetJobStatus(self, request, context):
-        # Return job status
-        pass
-    
-    def StreamMetrics(self, request, context):
-        # Stream metrics to client
+        # Implementation for JIT compile and dispatch over gRPC
         pass
 ```
 
-**Services:**
-- `SubmitJob` — Submit a computation job
-- `GetJobStatus` — Query job execution status
-- `CancelJob` — Cancel a running job
-- `StreamMetrics` — Stream performance metrics
-- `RegisterWorker` — Register a new worker node
+---
 
-### Job Manager (`job_manager.py`)
+## Job Lifecycle Manager
 
-Handles task execution state and lifecycle.
+The `JobManager` governs the asynchronous queue, task scheduling, and state persistence.
 
 ```python
 from uhcr.network.job_manager import JobManager
 
 manager = JobManager()
-job_id = manager.submit_job(code, args, hardware_hint)
+job_id = manager.submit_job(
+    code="def compute(a, b): return a + b", 
+    args=[10, 20], 
+    hardware_hint="avx2"
+)
 status = manager.get_status(job_id)
 result = manager.get_result(job_id)
 ```
 
-**States:**
-- `queued` — Waiting for worker availability
-- `running` — Currently executing
-- `completed` — Finished successfully
-- `failed` — Execution error
-- `cancelled` — User-initiated cancellation
-- `timeout` — Exceeded time limit
+### State Transition Diagram
 
-### Coordinator Node (`coordinator.py`)
+```
+[queued] ──> [running] ──> [completed]
+   │             │
+   │             ├──> [failed] (execution error)
+   │             │
+   └─────────────┴──> [cancelled] (aborted by user/timeout)
+```
 
-Routes jobs to appropriate workers based on hardware constraints.
+---
+
+## Coordinator Node Routing
+
+The `CoordinatorNode` handles load-balancing and schedules computations onto optimal workers based on hardware profiles.
 
 ```python
 from uhcr.network.coordinator import CoordinatorNode
@@ -155,144 +166,110 @@ coordinator = CoordinatorNode(
     listen_addr='0.0.0.0',
     listen_port=50051
 )
+# Workers register themselves with their capabilities profile
 coordinator.register_worker(worker_profile)
-coordinator.route_job(job, available_workers)
 ```
 
-**Responsibilities:**
-- Worker registration and health tracking
-- Job routing based on hardware profiles
-- Load balancing across workers
-- Failover and retry logic
+### Dispatch Logic
+1. **Target Filtering**: Compares job's `hardware_hint` against worker `HardwareProfile` features.
+2. **Workload Pinning**: Selects the worker with the lowest active thread utilization.
+3. **Failover**: If a worker fails to respond within the heartbeat window, the job is re-queued and routed to an alternative target.
 
-### Worker Node (`worker.py`)
+---
 
-Connects to coordinator, registers hardware profile, and executes jobs.
+## Worker Node Daemon
+
+Workers run as daemon processes on compute hosts, registering with the central coordinator and running jobs locally.
 
 ```python
 from uhcr.network.worker import WorkerNode
 
 worker = WorkerNode(
-    coordinator_addr='localhost:50051',
+    coordinator_addr='coordinator-host:50051',
     num_threads=8
 )
 worker.start()
 ```
 
-**Responsibilities:**
-- Register with coordinator
-- Receive job assignments
-- Execute jobs using local UHCR runtime
-- Report results and metrics
-- Maintain heartbeat with coordinator
+Each worker reports its local memory pool availability and CPU execution limits to the coordinator every 5 seconds.
 
-### Health Check (`health_check.py`)
+---
 
-Liveness and readiness probes for distributed health monitoring.
+## Health Monitoring & Diagnostics
+
+Liveness and readiness checks verify cluster health.
 
 ```python
 from uhcr.network.health_check import HealthChecker
 
 checker = HealthChecker()
-is_alive = checker.is_alive(worker_addr)
-is_ready = checker.is_ready(worker_addr)
+is_alive = checker.is_alive("worker-host:50051")
+is_ready = checker.is_ready("worker-host:50051")
 ```
 
-**Checks:**
-- Liveness probe (TCP connection)
-- Readiness probe (can accept jobs)
-- Resource availability (CPU, memory)
-- Network connectivity
+- **Liveness check**: Fast TCP-ping confirming the server is listening.
+- **Readiness check**: Validates worker local thread pool saturation and memory pool reserves.
 
-### Metrics Collector (`metrics_collector.py`)
+---
 
-Aggregates performance telemetry across the cluster.
+## Telemetry & Metrics Collection
+
+Metrics are collected asynchronously to prevent logging overhead from impacting execution performance.
 
 ```python
 from uhcr.network.metrics_collector import MetricsCollector
 
 collector = MetricsCollector()
-collector.record_job_metrics(job_id, duration, memory, throughput)
+collector.record_job_metrics(
+    job_id="job_abc123",
+    duration=0.045, # seconds
+    memory=45.2,    # MB
+    throughput=22.2 # jobs/sec
+)
 stats = collector.get_aggregate_stats()
 ```
 
-**Metrics:**
-- Job execution duration
-- Memory usage
-- Throughput (jobs/sec)
-- Error rates
-- Worker utilization
+---
 
-## Usage Patterns
+## Best Practices
 
-### Starting a Distributed Server
+1. **Prefer gRPC for hot loops**: Avoid utilizing REST endpoints for sub-millisecond computations; the HTTP serialization overhead degrades throughput.
+2. **Configure KeepAlives**: In multi-subnet cloud deployments, configure gRPC keep-alive pings to prevent firewalls from dropping idle worker connections.
+3. **Isolate local cache directory per worker**: Workers must not share a cached JIT assembly directory over NFS to avoid race conditions during file locks.
+4. **Set Memory Limits**: Ensure `UHCR_MEMORY_LIMIT` environment variable is configured below the container container limits to prevent out-of-memory worker restarts.
 
-```bash
-uhcr serve --grpc-port 50051 --rest-port 8080 --workers 4
-```
+---
 
-### Submitting a Remote Job
+## Limitations
 
-```bash
-uhcr submit --server localhost:50051 \
-  --code "def compute(a, b): return a + b" \
-  --args 10 20
-```
+- **No Shared Memory Across Hosts**: Remotely executed JIT functions cannot access shared memory segments (`SharedMemory` structures) or files on the coordinator host.
+- **Data Serialization Overhead**: Large inputs (e.g., >100MB tensors) sent over HTTP or gRPC degrade speedup margins due to serialization/deserialization times.
 
-### Monitoring Job Status
+---
 
-```bash
-uhcr status --server localhost:50051 --job-id job_123
-```
+## Troubleshooting
 
-### Real-time Monitoring
+### Worker Disconnects Regularly
+*Symptom*: Coordinator logs show workers frequently drop and re-register.  
+*Cause*: Missing gRPC keep-alive configuration or high CPU saturation causing workers to miss heartbeat intervals.  
+*Solution*: Increase heartbeat timeout limit via `UHCR_WORKER_TIMEOUT` or adjust worker CPU quota.
 
-```bash
-uhcr monitor --server localhost:50051 --interval 1
-```
+### Serialization Failure
+*Symptom*: Remote job fails with `SerializationError`.  
+*Cause*: Attempting to pass non-serializable objects (like open file handles, database connections, or unmapped classes) to remote JIT functions.  
+*Solution*: Restructure functions to take primitive types or `uhcr.Tensor` payloads.
 
-### Collecting Analytics
+---
 
-```bash
-uhcr analytics --server localhost:50051 --duration 3600
-```
+## Related Documentation
 
-## Configuration
+- [Runtime Architecture](#/docs/architecture)
+- [Storage and Caching](#/docs/storage)
+- [CLI Reference](#/docs/cli)
+- [Kubernetes Deployment](#/docs/benchmarks-kubernetes)
 
-Network components can be configured via environment variables:
+## Next Steps
 
-```bash
-export UHCR_GRPC_PORT=50051
-export UHCR_REST_PORT=8080
-export UHCR_MAX_WORKERS=10
-export UHCR_WORKER_TIMEOUT=30
-export UHCR_JOB_TIMEOUT=300
-```
-
-Or programmatically:
-
-```python
-from uhcr.network.protocol_server import ProtocolServer
-
-server = ProtocolServer(
-    grpc_port=50051,
-    rest_port=8080,
-    max_workers=10,
-    worker_timeout=30,
-    job_timeout=300
-)
-```
-
-## Performance Considerations
-
-- **gRPC**: Use for high-throughput, low-latency communication
-- **REST**: Use for compatibility with HTTP clients and load balancers
-- **Job Manager**: Implement job queue with priority levels for fairness
-- **Coordinator**: Use consistent hashing for worker selection
-- **Metrics**: Aggregate metrics asynchronously to avoid blocking job execution
-
-## See Also
-
-- [Architecture](architecture) — System design overview
-- [Storage Subsystem](storage) — Caching and persistence
-- [CLI Guide](cli-guide) — Command-line interface
+- Previous: [Kubernetes Benchmarks](#/docs/benchmarks-k8s)
+- Home: [Documentation Home](#/)
+- Next: [API Reference](#/docs/api-reference)

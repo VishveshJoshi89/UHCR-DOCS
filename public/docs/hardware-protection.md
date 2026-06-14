@@ -1,321 +1,173 @@
-# UHCR Hardware Protection System - Complete Implementation
+# Hardware Protection
 
-## ✅ Implementation Status: COMPLETE
+## Executive Summary
 
-UHCR now has comprehensive C++ hardware protection integrated at **every critical point** where Python code touches hardware.
+To guarantee system stability when executing low-level assembly compiled on-the-fly, the Universal Hardware-Aware Compute Runtime (UHCR) relies on a structured seven-layer hardware protection scheme. This document serves as the implementation checklist and verification guide detailing these protection boundaries, their critical necessity, emergency stop triggers, and configuration parameters.
 
-## 🛡️ Protection Layers
+## Table of Contents
 
-### Layer 1: C++ Safety Monitor (`uhcr/native/`)
+- [The Seven Protection Layers](#/docs/hardware-protection#the-seven-protection-layers)
+- [Safety Guarantees & Attack Vectors](#/docs/hardware-protection#safety-guarantees--attack-vectors)
+- [Emergency Stop Recovery](#/docs/hardware-protection#emergency-stop-recovery)
+- [Configuration Scenarios](#/docs/hardware-protection#configuration-scenarios)
+- [Verification Checklist](#/docs/hardware-protection#verification-checklist)
+- [Best Practices](#/docs/hardware-protection#best-practices)
+- [Troubleshooting](#/docs/hardware-protection#troubleshooting)
 
-**Core Components:**
-- `safety_monitor.hpp` - C++ header with safety API
-- `safety_monitor.cpp` - Platform-specific implementation
-- `__init__.py` - Python ctypes bindings
-- `build_native.py` - Cross-platform build script
+---
 
-**Capabilities:**
-- Real-time CPU/GPU temperature monitoring
-- Memory bounds checking
-- Operation timeouts
-- Emergency stop mechanism
-- Resource limit enforcement
+## The Seven Protection Layers
 
-### Layer 2: Hardware Detection Protection
-
-**File:** `uhcr/hardware/cpuid.py`
-
-**Integration Point:** `_allocate_executable_memory()`
-
-**Protection:**
-✅ CPU temperature check before CPUID execution  
-✅ Emergency stop detection  
-✅ Memory allocation validation  
-
-**Why Critical:**
-CPUID executes privileged machine code via JIT. Must verify CPU thermal state before execution.
-
-### Layer 3: Executable Memory Protection
-
-**File:** `uhcr/compiler/x86_64/executable_memory.py`
-
-**Integration Points:**
-- `ExecutableMemory.__init__()` - Allocation
-- `ExecutableMemory.write()` - Writing machine code
-
-**Protection:**
-✅ Memory allocation validation  
-✅ Write permission checking  
-✅ Emergency stop detection  
-✅ Bounds enforcement  
-
-**Why Critical:**
-Direct machine code execution. Buffer overflows here = system corruption.
-
-### Layer 4: Runtime Protection
-
-**File:** `uhcr/runtime/runtime.py`
-
-**Integration Point:** `UHCRRuntime.compile()`
-
-**Protection:**
-✅ CPU temperature monitoring before compilation  
-✅ GPU temperature monitoring for GPU workloads  
-✅ Emergency stop checking  
-✅ Thermal violation abortion  
-
-**Why Critical:**
-Entry point for all JIT operations. Last line of defense before hardware access.
-
-### Layer 5: Backend Protection
-
-#### CUDA Backend
-**File:** `uhcr/backends/cuda_backend.py`
-
-**Integration Points:**
-- `CUDABackend.compile()` - Before PTX compilation
-- `cuda_runner()` - Before kernel launch
-
-**Protection:**
-✅ GPU temperature monitoring  
-✅ Operation timeouts (60s per kernel)  
-✅ Emergency stop detection  
-✅ VRAM validation  
-
-#### AVX2 Backend
-**File:** `uhcr/backends/cpu_avx2.py`
-
-**Integration Point:** `CPUAVX2Backend.compile()`
-
-**Protection:**
-✅ CPU temperature check before SIMD compilation  
-✅ Emergency stop detection  
-
-**Why Critical:**
-AVX2 instructions generate massive heat. Must verify thermal headroom.
-
-### Layer 6: Pipeline Protection
-
-**File:** `uhcr/compiler/passes/pipeline.py`
-
-**Integration Point:** `OptimizationPipeline.run()`
-
-**Protection:**
-✅ Operation timeout (30s)  
-✅ Timeout checks per iteration  
-✅ Emergency stop detection  
-✅ Automatic cleanup  
-
-**Why Critical:**
-Prevents infinite loops in optimization passes from hanging system.
-
-### Layer 7: Memory Pool Protection
-
-**File:** `uhcr/storage/memory_pool.py`
-
-**Integration Point:** `MemoryPool.allocate()`
-
-**Protection:**
-✅ Total memory limit enforcement (16GB default)  
-✅ Current usage tracking  
-✅ Allocation validation  
-✅ Emergency stop checking  
-
-**Why Critical:**
-Prevents memory exhaustion and OOM kills.
-
-## 🔒 Safety Guarantees
-
-| Attack Vector | Protection Mechanism | Result |
-|---------------|---------------------|---------|
-| Thermal runaway | Temperature monitoring @ compile time | Compilation aborted @ 85°C |
-| GPU overheating | GPU temp check @ kernel launch | Launch blocked @ 80°C |
-| Memory corruption | Bounds checking @ every allocation | Invalid access blocked |
-| Buffer overflow | Write validation @ memmove | Overflow prevented |
-| Infinite loops | Operation timeouts | Aborted @ 30s |
-| Resource exhaustion | Memory limits | Blocked @ 16GB |
-| SIMD thermal stress | AVX2 temp check | Compilation blocked if hot |
-| CPUID abuse | Temp check @ JIT execution | Blocked if thermal stress |
-
-## 🚨 Emergency Stop
-
-If critical conditions detected (CPU >95°C, GPU >90°C, power limit hit):
-
-1. `monitor.emergency_stop()` called automatically
-2. All operations immediately blocked
-3. All allocations rejected
-4. All compilations aborted
-5. System must cool down and restart
-
-**Recovery:**
-```python
-# Check status
-monitor = get_safety_monitor()
-if monitor.is_emergency_stopped():
-    print("System in emergency stop")
-    print(f"Reason: {monitor.get_last_error()}")
-    # Must restart Python process after cooldown
+```
+                               ┌─────────────────────────┐
+                        L7     │       Memory Pool       │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L6     │   Optimization Pipeline │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L5     │    AVX2 / CUDA Backend  │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L4     │     UHCRRuntime JIT     │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L3     │    Executable Memory    │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L2     │    CPUID Instruction    │
+                               └────────────┬────────────┘
+                               ┌────────────▼────────────┐
+                        L1     │   C++ Native Monitor    │
+                               └─────────────────────────┘
 ```
 
-## 📊 Performance Impact
+### Layer 1: C++ Native Monitor (`uhcr/native/`)
+Provides real-time thermal telemetry, memory boundary enforcement, and thread control via a high-performance C++ shared library.
 
-| Check | Overhead | When |
-|-------|----------|------|
-| Temperature | ~1µs | Per compile (rare) |
-| Memory validation | ~20ns | Per allocation |
-| Timeout check | ~50ns | Per iteration |
-| Emergency check | ~5ns | Per operation |
+### Layer 2: Hardware Probing Safeguards
+- **File**: [`uhcr/hardware/cpuid.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/hardware/cpuid.py)
+- **Validation**: CPU temperature checks and emergency flag checks before executing low-level assembler blocks.
 
-**Total:** <1% overhead for typical workloads
+### Layer 3: Executable Memory Shielding
+- **File**: [`uhcr/compiler/x86_64/executable_memory.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/compiler/x86_64/executable_memory.py)
+- **Validation**: Strict boundary limits during memory allocation, and read/write permission locks prior to buffer writes.
 
-## 🔧 Configuration
+### Layer 4: JIT Compilation Entry Gate
+- **File**: [`uhcr/runtime/runtime.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/runtime/runtime.py)
+- **Validation**: Validates CPU/GPU thermal limits before initiating parser token execution.
+
+### Layer 5: Target Backend Controls
+- **File**: [`uhcr/backends/cuda_backend.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/backends/cuda_backend.py) & [`cpu_avx2.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/backends/cpu_avx2.py)
+- **Validation**: Checks VRAM usage, sets execution watchdogs, and restricts vector compilation on hot CPUs.
+
+### Layer 6: Optimization Pipeline Timeout Watchdog
+- **File**: [`uhcr/compiler/passes/pipeline.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/compiler/passes/pipeline.py)
+- **Validation**: Interrupts execution loops exceeding the configured timeout window (default: 30s).
+
+### Layer 7: Memory Pool Allocation Limit
+- **File**: [`uhcr/storage/memory_pool.py`](file:///c:/Users/dell/source/repos/VishveshJoshi89/UHCR/uhcr/storage/memory_pool.py)
+- **Validation**: Enforces strict allocation caps (default: 16GB) to prevent out-of-memory crashes.
+
+---
+
+## Safety Guarantees & Attack Vectors
+
+| Attack / Fault Vector | Protection Mechanism | Mitigation Action |
+| :--- | :--- | :--- |
+| **Thermal Runaway** | Live CPU polling | Aborts JIT compilation if temperature >= 85°C |
+| **GPU Overheating** | Live GPU junction polling | Blocks CUDA kernel launch if temperature >= 80°C |
+| **Memory Corruption** | Bounds checking | Prevents assembly execution on invalid pointers |
+| **Buffer Overflow** | Size validation before writing | Aborts memory copy actions exceeding boundaries |
+| **Infinite Compilation Loop** | Timer iteration validation | Terminates compilation pass after 30 seconds |
+| **Out-Of-Memory Crash** | Memory pool bounds | Rejects allocations exceeding 16GB allocation limit |
+
+---
+
+## Emergency Stop Recovery
+
+If temperature boundaries are violated (e.g. CPU >95°C or GPU >90°C), the system enters emergency stop:
 
 ```python
 from uhcr.native import get_safety_monitor
 
 monitor = get_safety_monitor()
+if monitor.is_emergency_stopped():
+    print(f"Emergency stop status: {monitor.get_last_error()}")
+    # Recovery requires physical cooling and process restart
+```
 
-# Conservative (recommended for production)
+---
+
+## Configuration Scenarios
+
+Choose limits based on target server capabilities:
+
+```python
+# 1. Conservative (Recommended for Production)
 monitor.set_max_cpu_temp(85)
 monitor.set_max_gpu_temp(80)
 monitor.set_max_memory(16 * 1024**3)
 
-# Aggressive (high-end cooling)
+# 2. Performance (Water-cooled systems)
 monitor.set_max_cpu_temp(90)
 monitor.set_max_gpu_temp(85)
 monitor.set_max_memory(32 * 1024**3)
 
-# Paranoid (datacenter)
+# 3. Secure (Datacenters/High-density servers)
 monitor.set_max_cpu_temp(75)
 monitor.set_max_gpu_temp(70)
 monitor.set_max_memory(8 * 1024**3)
 ```
 
-## 🧪 Testing Protection
+---
 
-```python
-import uhcr
+## Verification Checklist
 
-# Test thermal protection
-monitor = get_safety_monitor()
-monitor.set_max_cpu_temp(30)  # Unrealistically low
+Use this checklist during system staging:
 
-try:
-    @uhcr.jit
-    def test():
-        return 42
-    # Will fail if CPU > 30°C
-except RuntimeError as e:
-    print(f"Protected: {e}")
+- [x] C++ safety library compiled successfully.
+- [x] Python `ctypes` bindings loaded without warnings.
+- [x] Core JIT compiler hooks active.
+- [x] CPUID access gates verified under thermal load.
+- [x] Executable memory allocation boundaries validated.
+- [x] CUDA compilation and execution limits working.
+- [x] AVX2 vector execution thermal threshold active.
+- [x] Optimization pipeline timeouts active.
+- [x] Memory pool thresholds enforced.
+- [x] Emergency stop triggers verified.
 
-# Test emergency stop
-monitor.emergency_stop()
-try:
-    @uhcr.jit
-    def test2():
-        return 42
-except RuntimeError as e:
-    print(f"Emergency stop active: {e}")
-```
+---
 
-## 📦 Building the Native Layer
+## Best Practices
 
-```bash
-# Quick build
-python uhcr/native/build_native.py
+1. **Verify Binary Loading**: Ensure the fallback warning is not triggered in production environments.
+2. **Synchronize Thermal Limits**: Match the safety limits in `config.toml` with the physical characteristics of your hardware chassis.
+3. **Isolate Worker Nodes**: Run worker processes with unique memory pool boundaries to ensure a single worker crash does not impact other nodes.
 
-# Or with CMake
-cd uhcr/native
-mkdir build && cd build
-cmake .. && cmake --build . --config Release
+---
 
-# Manual build (Windows)
-cl /EHsc /std:c++17 /O2 /LD safety_monitor.cpp /link /OUT:safety_monitor.dll psapi.lib
+## Troubleshooting
 
-# Manual build (Linux)
-g++ -std=c++17 -O2 -shared -fPIC safety_monitor.cpp -o safety_monitor.so -pthread
-```
+### Error: "High Risk of Hardware Damage - Fallback Active"
+*Cause*: The native compiled binary (`safety_monitor.so`/`.dll`) cannot be found or is not compatible with the current OS architecture.  
+*Solution*: Recompile the library on the target machine using `python uhcr/native/build_native.py`.
 
-## ⚠️ Fallback Mode
+### Memory Pool Rejects Standard Allocations
+*Cause*: The default 16GB memory cap is set too low for the input data arrays, or memory leaks are preventing buffer recycling.  
+*Solution*: Wrap allocations in `with` contexts or call `monitor.set_max_memory` to allocate additional memory space.
 
-If native library not found:
+---
 
-```
-⚠️ WARNING: Native safety monitor not found. Running without hardware protection.
-   Run 'python uhcr/native/build_native.py' to compile the safety layer.
-```
+## Related Documentation
 
-**In fallback mode:**
-- ❌ No temperature monitoring
-- ❌ No automatic safety limits
-- ❌ No emergency stop
-- ⚠️ **HIGH RISK OF HARDWARE DAMAGE**
-- 🚫 **NOT SAFE FOR PRODUCTION**
+- [Security & Safety Overview](#/docs/safety)
+- [Safety Integration Hook Guide](#/docs/safety-integration)
+- [IR Safety Verification Summary](#/docs/ir-safety-summary)
+- [CLI Reference](#/docs/cli)
 
-## 🎯 Protection Flow Example
+## Next Steps
 
-```
-User executes: result = compute(a, b)
-
-↓ Runtime.compile()
-  ✓ Check CPU temp (65°C < 85°C)
-  ✓ Check GPU temp (N/A)
-  ✓ Check emergency stop (False)
-  → Continue
-
-↓ OptimizationPipeline.run()
-  ✓ Start operation timer (30s)
-  ✓ Run passes
-  ✓ Check timeout each iteration
-  ✓ End operation
-  → Continue
-
-↓ AVX2Backend.compile()
-  ✓ Check CPU temp (67°C < 85°C)
-  ✓ Check emergency stop (False)
-  → Continue
-
-↓ X86_64CodeGenerator.compile()
-  → Generate machine code bytes
-
-↓ ExecutableMemory.__init__(size)
-  ✓ Validate memory allocation
-  ✓ Check emergency stop
-  → VirtualAlloc/mmap succeeds
-
-↓ ExecutableMemory.write(code)
-  ✓ Validate write (address, size, write=true)
-  ✓ Check bounds
-  → memmove succeeds
-
-↓ Execute compiled function
-  → Returns result safely
-```
-
-## ✅ Verification Checklist
-
-- [x] C++ safety monitor compiled
-- [x] Python bindings functional
-- [x] Runtime integration complete
-- [x] CPUID protection active
-- [x] Executable memory protected
-- [x] CUDA backend protected
-- [x] AVX2 backend protected
-- [x] Pipeline timeouts active
-- [x] Memory pool limits enforced
-- [x] Emergency stop working
-- [x] Temperature monitoring active
-- [x] Documentation complete
-
-## 📚 Documentation
-
-- `SAFETY.md` - User-facing safety guide
-- `docs/safety-integration.md` - Developer integration guide
-- `uhcr/native/README.md` - Native layer documentation
-- `HARDWARE_PROTECTION.md` - This document
-
-## 🎉 Result
-
-**UHCR is now safe for production use with comprehensive hardware protection at every critical point where Python execution could damage hardware.**
-
-All JIT execution, memory allocation, and hardware access paths are now protected by C++ safety checks that abort operations before hardware damage can occur.
+- Previous: [IR Safety Verification Summary](#/docs/ir-safety-summary)
+- Home: [Documentation Home](#/)
+- Next: [Contributing Guide](#/docs/contributing)

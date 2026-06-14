@@ -1,122 +1,126 @@
+# Performance Tuning
 
-# UHCR Performance Benchmarks
+## Executive Summary
 
-This page compares performance across three execution modes using **large workloads** (millions of operations) where JIT compilation overhead is amortized.
+This document presents performance metrics comparing native Python, UHCR with built-in backends, and UHCR with custom ISA plugins. Measurements were captured on an Intel Core i7-7600U CPU using large workloads to amortize JIT compilation overhead. The results indicate that UHCR is highly effective for compute-bound workloads, such as matrix multiplication (yielding a **2.96x speedup**), while memory-bound operations like list comprehensions run at parity with native Python.
+
+## Table of Contents
+
+- [Execution Modes](#/docs/benchmarks#execution-modes)
+- [System Configuration](#/docs/benchmarks#system-configuration)
+- [Benchmark Results Table](#/docs/benchmarks#benchmark-results-table)
+- [Workload Analysis](#/docs/benchmarks#workload-analysis)
+- [Operational Recommendations](#/docs/benchmarks#operational-recommendations)
+- [Best Practices](#/docs/benchmarks#best-practices)
+- [Troubleshooting](#/docs/benchmarks#troubleshooting)
+
+---
 
 ## Execution Modes
 
-1. **Normal Python execution** - Pure Python baseline
-2. **UHCR with custom ISA plugin** - UHCR with ISA plugin backend  
-3. **UHCR without plugin** - UHCR built-in backends
+Performance is measured across three primary runtime configurations:
 
-### Note (Warning)
-```
-⚠️ UHCR depends on every ISA and plugins:
-    for optimization, performance, merging, data calculation and benchmarks may be affected by it.
-```
+1. **Normal Python Execution**: Interpretive baseline execution.
+2. **UHCR without Plugin**: Built-in CPU compiler backend using auto-vectorized code generation.
+3. **UHCR with Custom ISA Plugin**: Compilation utilizing a dynamically loaded, custom Instruction Set Architecture backend.
 
-## Benchmark Results (milliseconds)
+> [!WARNING]
+> UHCR JIT optimization paths, instruction merging, and memory layout configurations are shared between core pipelines and plugin APIs. Loading plugins may introduce registration lookup overhead, affecting micro-benchmarks.
 
-| Workload | Python (ms) | UHCR + Plugin (ms) | UHCR (ms) | Plugin Speedup | UHCR Speedup |
-|----------|------------|-------------------|-----------|--------------------|-----------------|
-| string_concat (5M) | 1993.50 | 1289.73 | 1316.12 | **1.55x faster** | **1.51x faster** |
-| loop_sum (10M) | 197.46 | 199.15 | 189.72 | 0.99x (slower) | **1.04x faster** |
-| matrix_mul (500×500) | 35.52 | 15.99 | 11.99 | **2.22x faster** | **2.96x faster** |
-| list_comp (10M) | 1075.42 | 1166.35 | 1070.77 | 0.92x (slower) | 1.00x (neutral) |
-
-## Performance Analysis
-
-### String Concatenation (5 Million iterations)
-
-- **With plugin**: 1.55x faster than Python (1993.50ms → 1289.73ms)
-- **Without plugin**: 1.51x faster than Python (1993.50ms → 1316.12ms)
-
-String operations show substantial speedup with UHCR. The plugin adds slight overhead vs. built-in backend (1.55x vs 1.51x), but both still significantly outperform Python's interpreted string handling.
-
-### Loop Operations (Sum to 10 Million)
-
-- **With plugin**: 0.99x (essentially equal to Python: 197.46ms → 199.15ms)
-- **Without plugin**: 1.04x faster than Python (197.46ms → 189.72ms)
-
-Loop operations show minimal gains without plugin. The plugin actually adds ~10ms overhead here, making Python's optimized `sum()` competitive. The built-in backend edges out slightly at 1.04x.
-
-### Matrix Multiplication (500×500)
-
-- **With plugin**: 2.22x faster than Python (35.52ms → 15.99ms)
-- **Without plugin**: 2.96x faster than Python (35.52ms → 11.99ms)
-
-Matrix multiplication shows the **largest speedup at 2.96x** without plugin! UHCR's AVX2 backend demonstrates why it's valuable for compute-intensive operations. The plugin adds overhead here (2.96x → 2.22x).
-
-### List Comprehension (10 Million elements)
-
-- **With plugin**: 0.92x (slightly slower: 1075.42ms → 1166.35ms)
-- **Without plugin**: 1.00x (neutral: 1075.42ms → 1070.77ms)
-
-List comprehensions show Python is competitive. The plugin actually underperforms vs. Python (0.92x), while the built-in backend maintains parity. This workload is memory-bound rather than compute-bound.
-
-## Interpretation
-
-- **Speedup > 1.0**: UHCR is faster than Python ✅
-- **Speedup ≈ 1.0**: Performance equivalent to Python
-- **Speedup < 1.0**: Python is faster (workload characteristics favor Python)
-
-### Key Findings from Real UHCR Benchmarks:
-
-```
-Matrix operations:      2.96x faster (best case - compute-bound)
-String operations:      1.55x faster (good - I/O + compute)
-Loop operations:        1.04x faster (marginal - limited benefit)
-List comprehensions:    1.00x neutral (worst case - memory-bound)
-```
-
-### Plugin vs Built-in Backend:
-
-The custom ISA plugin sometimes adds overhead:
-- String concat: 1.55x (plugin) vs 1.51x (built-in) — 2% slower
-- Matrix ops: 2.22x (plugin) vs 2.96x (built-in) — 25% slower
-- Loop ops: 0.99x (plugin) vs 1.04x (built-in) — slower overall
-
-**Recommendation**: Use built-in backends by default. Custom ISA plugins are best for specialized hardware.
-
-### When to Use UHCR:
-
-| Use Case | Speedup | Recommendation |
-|----------|---------|-----------------|
-| **Matrix/numeric ops** | 2.96x | ✅ **BEST** - Use UHCR |
-| **String operations** | 1.55x | ✅ Use UHCR |
-| **Loop operations** | 1.04x | ⚠️ Marginal benefit |
-| **List comprehensions** | 1.00x | ❌ Use Python |
-| **Small workloads** | < 1.0x | ❌ Use Python |
+---
 
 ## System Configuration
 
-- **CPU**: Intel(R) Core(TM) i7-7600U CPU @ 2.80GHz
-- **CPU Features**: aes, avx, avx2, bmi1, bmi2, fma, popcnt, sse, sse2, sse3, sse4_1, sse4_2, ssse3
-- **CUDA**: Available (not used for CPU benchmarks)
-- **Backend Used**: cpu_avx2 (vectorized operations)
+Benchmarks were run under the following hardware profile:
+- **Processor**: Intel(R) Core(TM) i7-7600U CPU @ 2.80GHz
+- **Instruction Extensions**: `aes`, `avx`, `avx2`, `bmi1`, `bmi2`, `fma`, `popcnt`, `sse`, `sse2`, `sse3`, `sse4_1`, `sse4_2`, `ssse3`
+- **Compiler Backend**: `cpu_avx2` (using 256-bit YMM register vectorized loops)
+- **Accelerator Availability**: CUDA present (unused during these CPU-bound benchmarks)
 
-## Recommendations
+---
 
-1. **For small scripts**: Use native Python (< 100ms workloads)
-2. **For compute-intensive operations**: Use UHCR ✅ (1.1x - 3.5x faster)
-3. **For data processing**: Use UHCR with large batches (1.3x - 1.8x faster)
-4. **For matrix operations**: Use UHCR ✅ (3.5x faster with AVX2)
-5. **For GPU workloads**: Enable CUDA for 8x-20x speedups on specialized hardware
-6. **For AVX512 systems**: Use cpu_avx512 backend for even greater vectorization benefits
+## Benchmark Results Table
 
-## Conclusion
+Execution times are reported in milliseconds. Lower numbers indicate better performance.
 
-**Real UHCR Runtime Results**: Using UHCR's actual runtime API with large workloads:
+| Workload | Python (ms) | UHCR + Plugin (ms) | UHCR (ms) | Plugin Speedup | UHCR Speedup |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **String Concat** (5M) | 1993.50 | 1289.73 | 1316.12 | **1.55x** | **1.51x** |
+| **Loop Sum** (10M) | 197.46 | 199.15 | 189.72 | 0.99x | **1.04x** |
+| **Matrix Mul** (500×500) | 35.52 | 15.99 | 11.99 | **2.22x** | **2.96x** |
+| **List Comp** (10M) | 1075.42 | 1166.35 | 1070.77 | 0.92x | 1.00x |
 
-- **Matrix operations are 2.96x faster** - the sweet spot for UHCR optimization
-- **String operations are 1.55x faster** - good speedup on I/O-heavy workloads
-- **Loop operations are 1.04x faster** - marginal benefit for scalar operations
-- **List comprehensions match Python** - not the intended use case
+---
 
-**Key Insight**: UHCR excels at **compute-intensive operations** (matrix math, vectorized operations) where CPU-level optimizations and vectorization provide substantial gains. For memory-bound or I/O-bound operations, UHCR provides moderate benefits.
+## Workload Analysis
 
-**Best Practices**:
-1. Use UHCR for numerical computing (NumPy-like operations)
-2. Use UHCR for large batch processing
-3. Use Python for small scripts and memory-bound operations
-4. Use built-in backends; custom ISA plugins add overhead unless targeting specialized hardware
+### Matrix Multiplication (500×500 Float Operations)
+- **Built-in Backend**: **2.96x Speedup** (35.52ms down to 11.99ms)
+- **Plugin Backend**: **2.22x Speedup** (35.52ms down to 15.99ms)
+
+*Analysis*: This represents the sweet spot for UHCR optimization. The JIT compiler lowers multi-dimensional matrix operations to highly vectorized AVX2 inner loops. The plugin introduces a 25% performance penalty compared to the built-in compiler, indicating plugin dispatch and boundary crossing overhead.
+
+### String Concatenation (5 Million Operations)
+- **Built-in Backend**: **1.51x Speedup** (1993.50ms down to 1316.12ms)
+- **Plugin Backend**: **1.55x Speedup** (1993.50ms down to 1289.73ms)
+
+*Analysis*: String manipulation is I/O-heavy. UHCR achieves a solid speedup over Python's standard memory allocator. Here, the custom plugin performs slightly better, demonstrating the utility of targeted string optimization passes.
+
+### Loop Operations (Sum to 10 Million)
+- **Built-in Backend**: **1.04x Speedup** (197.46ms down to 189.72ms)
+- **Plugin Backend**: 0.99x (Slower)
+
+*Analysis*: Scalar looping yields minimal gains because Python's built-in `sum()` function is already heavily optimized in C. Loading custom plugins results in a net degradation due to initialization and dynamic type checking.
+
+### List Comprehension (10 Million Elements)
+- **Built-in Backend**: 1.00x (Parity)
+- **Plugin Backend**: 0.92x (Slower)
+
+*Analysis*: List comprehensions are memory-bound. The performance is constrained by system RAM bus bandwidth rather than CPU instruction speeds. UHCR cannot optimize away the physical memory allocation bottlenecks in these patterns.
+
+---
+
+## Operational Recommendations
+
+| Workload Type | Speedup Potential | Recommendation |
+| :--- | :--- | :--- |
+| **Matrix & Numeric Math** | 2.0x - 3.5x | ✅ **Best Case**: Always compile using UHCR. |
+| **Large String Concat** | 1.3x - 1.8x | ✅ **Recommended**: Compile using UHCR. |
+| **Simple Scalar Loops** | 1.0x - 1.1x | ⚠️ **Marginal**: Parity with Python; compile only if nested in broader kernels. |
+| **List Comprehensions** | < 1.0x | ❌ **Not Recommended**: Keep in standard Python. |
+| **Micro-Workloads (< 100ms)** | < 1.0x | ❌ **Not Recommended**: Compilation latency exceeds execution savings. |
+
+---
+
+## Best Practices
+
+1. **Default to Built-in Backends**: Unless compiling for specialized, non-standard architectures, utilize built-in compilation backends to avoid plugin abstraction overhead.
+2. **Amortize JIT Costs**: Only apply `@uhcr.jit` to functions that will be invoked repeatedly or perform heavy loops.
+3. **Target Compute-Bound Operations**: Reserve compiler optimization passes for numeric calculation kernels, avoiding memory-intensive and network-intensive routines.
+
+---
+
+## Troubleshooting
+
+### Benchmarks Slower Than Python
+*Cause*: The benchmark size is too small, meaning JIT compilation overhead is included in the execution timing.  
+*Solution*: Increase iterations or workload size to ensure compilation costs are amortized, or use the `eager=True` parameter to pre-compile during startup.
+
+### Plugin Adding Unreasonable Latency
+*Cause*: Inefficient register allocation or lack of constant folding in the plugin's code-generation pass.  
+*Solution*: Enable `enable_profiling = true` in `config.toml` to locate the slow instruction phase in the plugin compile pipeline.
+
+---
+
+## Related Documentation
+
+- [Docker Benchmarks](#/docs/benchmarks-docker)
+- [Kubernetes Benchmarks](#/docs/benchmarks-k8s)
+- [JIT Compilation Guide](#/docs/jit-guide)
+- [Reference Index](#/docs/reference)
+
+## Next Steps
+
+- Previous: [Reference Index](#/docs/reference)
+- Home: [Documentation Home](#/)
+- Next: [Security & Safety](#/docs/safety)

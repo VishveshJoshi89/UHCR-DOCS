@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../hooks/useTheme';
 import logo from '../../assets/logo.png';
+import { SearchBar } from '../SearchBar';
 import './Header.css';
 
 interface HeaderProps {
@@ -31,6 +32,8 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="header-right">
+          <SearchBar />
+          
           <Link to="/plugin-builder" className="plugin-builder-link">
             🔌 
             <span>Plugin Builder</span>

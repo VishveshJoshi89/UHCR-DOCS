@@ -1,276 +1,157 @@
-# UHCR Documentation Website - Deployment Guide
+# UHCR Documentation Web Portal: Deployment Guide
 
-## 🚀 Overview
+## Executive Summary
 
-A modern, high-performance documentation website for UHCR built with:
-- **React 19** + **TypeScript** + **Vite** 
-- React Router for client-side routing
-- Markdown rendering with syntax highlighting
-- Dark/Light theme support
-- Responsive design (320px - 2560px)
-- Plugin Builder tool
-- WCAG 2.1 AA accessibility compliant
+The UHCR Documentation Web Portal is a responsive, single-page application (SPA) built using React 19, TypeScript, and Vite. Designed to load static markdown files client-side, the application features an interactive Plugin Builder tool, light/dark mode styling with local storage persistence, and WCAG 2.1 AA contrast compliance. This document serves as the installation, compilation, and deployment guide for production hosting environments.
 
-## 📦 Project Structure
+## Table of Contents
+
+- [Project Directory Layout](#project-directory-layout)
+- [Development Workflow](#development-workflow)
+- [Design System & Theme Tokens](#design-system--theme-tokens)
+- [Hosting & Production Deployment](#hosting--production-deployment)
+- [Adding New Documentation Files](#adding-new-documentation-files)
+- [Security & Performance Guidelines](#security--performance-guidelines)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Project Directory Layout
 
 ```
 UHCR-DOCS/
 ├── src/
-│   ├── components/       # Reusable UI components
-│   │   ├── CodeBlock/    # Syntax-highlighted code with copy button
-│   │   ├── Header/       # Site header with navigation
-│   │   ├── Hero/         # Landing page hero section
-│   │   ├── MarkdownRenderer/  # Markdown content renderer
-│   │   ├── Sidebar/      # Navigation sidebar
-│   │   └── TableOfContents/   # Page TOC
-│   ├── pages/            # Page components
-│   │   ├── Home/         # Landing page
-│   │   ├── DocPage/      # Documentation page wrapper
-│   │   ├── NotFound/     # 404 page
-│   │   └── PluginBuilder/  # Interactive plugin builder
-│   ├── layouts/          # Layout components
-│   ├── hooks/            # Custom React hooks
-│   ├── utils/            # Utility functions
-│   ├── styles/           # Global styles and theme
-│   └── types/            # TypeScript definitions
-├── mcp/
-│   ├── server.py         # MCP server implementation
-│   ├── __init__.py       # Version   
-│   └── README.md         # README
+│   ├── components/       # UI Components (CodeBlock, Sidebar, TOC, etc.)
+│   ├── pages/            # Page Views (Home, DocPage, PluginBuilder, 404)
+│   ├── layouts/          # Responsive grids and wrappers
+│   ├── hooks/            # Custom React hooks (theme context, scrollSpy)
+│   ├── utils/            # Sidebars and router mapping helpers
+│   ├── styles/           # Global design system CSS tokens
+│   └── types/            # TypeScript interface definitions
 ├── public/
-│   └── docs/             # Markdown documentation files
-└── dist/                 # Production build output
+│   └── docs/             # Source markdown documentation files
+├── dist/                 # Compiled distribution assets
+└── mcp/                  # Model Context Protocol service source
 ```
 
-## 🛠️ Development
+---
+
+## Development Workflow
 
 ### Prerequisites
-- Node.js 18+ 
-- npm or yarn
+- Node.js version 18.0.0 or higher.
+- Package manager (`npm` or `yarn`).
 
 ### Installation
+From the repository root:
 ```bash
-cd web
 npm install
 ```
 
-### Development Server
+### Dev Execution
+Launch the local Vite hot-reload server:
 ```bash
 npm run dev
 ```
-Opens at `http://localhost:5173`
+Navigate to `http://localhost:5173` in a web browser.
 
-### Build for Production
+### Production Compilation
+Build minimized static assets:
 ```bash
 npm run build
 ```
-Output in `dist/` folder
+The output is written to the `./dist/` directory.
 
-### Preview Production Build
+### Preview Build
+Verify compiled production assets locally:
 ```bash
 npm run preview
 ```
 
-## 🎨 Features Implemented
+---
 
-### ✅ Core Functionality
-- [x] React Router with nested routes
-- [x] Markdown rendering with GFM support
-- [x] Syntax highlighting (Python, JS, TS, Bash, JSON, YAML)
-- [x] Copy-to-clipboard for code blocks
-- [x] Dark/Light theme with localStorage persistence
-- [x] System preference detection
-- [x] Responsive navigation sidebar
-- [x] Table of contents with scroll spy
-- [x] 404 error page
+## Design System & Theme Tokens
 
-### ✅ UX/UI Improvements
-- [x] Modern typography (Inter/SF Pro/Segoe UI stack)
-- [x] Improved color contrast (WCAG 2.1 AA compliant)
-- [x] Smooth animations and transitions
-- [x] Touch-friendly targets (44x44px minimum)
-- [x] Fluid typography with clamp()
-- [x] Better shadows and depth
-- [x] Backdrop blur effects
-- [x] Reduced motion support
-- [x] Focus-visible indicators
+The UI adapts automatically to system dark mode preferences, supporting a fluid typography scale constructed via CSS `clamp()` and backdrop blurs.
 
-### ✅ Plugin Builder
-- [x] Interactive form for plugin configuration
-- [x] Real-time TOML generation
-- [x] Python template generation
-- [x] Download generated files
-- [x] Installation instructions
-- [x] Dependency management
+### Core Color Palette (Light Mode)
+- **Primary Accent**: `#6366f1` (Indigo)
+- **Neutral Background**: `#ffffff` / `#f8fafc` / `#f1f5f9`
+- **Text Color**: `#0f172a` (Primary) / `#475569` (Secondary)
 
-### ✅ Accessibility
-- [x] Semantic HTML elements
-- [x] ARIA labels and roles
-- [x] Keyboard navigation
-- [x] Focus indicators
-- [x] Color contrast ratios
-- [x] Screen reader support
-- [x] Skip navigation links
+### Core Color Palette (Dark Mode)
+- **Primary Accent**: `#818cf8` (Light Indigo)
+- **Neutral Background**: `#0f172a` / `#1e293b` / `#334155`
+- **Text Color**: `#f1f5f9` (Primary) / `#cbd5e1` (Secondary)
 
-### ✅ Performance
-- [x] Code splitting
-- [x] Lazy loading
-- [x] Optimized images
-- [x] Minified assets
-- [x] Caching strategies
-- [x] Fast HMR in development
-
-## 🌐 Browser Support
-
-- Chrome/Edge 90+
-- Firefox 88+
-- Safari 14+
-- iOS Safari 14+
-- Chrome Android 90+
-
-## 📱 Responsive Breakpoints
-
-- **Mobile**: 320px - 767px
-- **Tablet**: 768px - 1023px
-- **Desktop**: 1024px+
-- **Large Desktop**: 1400px+
-
-### Mobile Optimizations
-- Collapsible sidebar
-- Stacked navigation
-- Full-width buttons
-- Hidden TOC
-- Simplified header
-- Touch-optimized targets
-
-## 🎨 Design System
-
-### Colors (Light Mode)
-- Primary: `#6366f1` (Indigo)
-- Background: `#ffffff` / `#f8fafc` / `#f1f5f9`
-- Text: `#0f172a` / `#475569` / `#94a3b8`
-
-### Colors (Dark Mode)
-- Primary: `#818cf8` (Light Indigo)
-- Background: `#0f172a` / `#1e293b` / `#334155`
-- Text: `#f1f5f9` / `#cbd5e1` / `#64748b`
-
-### Typography
-- **Font Family**: System UI stack (SF Pro, Segoe UI, Inter, Roboto)
-- **Code Font**: JetBrains Mono, Fira Code, Consolas
-- **Base Size**: 16px
-- **Line Height**: 1.6
-- **Scale**: Fluid with clamp()
-
-### Spacing
-- Uses consistent spacing scale
-- Responsive with clamp()
-- Mobile-first approach
-
-## 🚀 Deployment Options
-
-### Option 1: Vercel
-```bash
-npm install -g vercel
-vercel
-```
-
-### Option 2: Netlify
-```bash
-npm install -g netlify-cli
-netlify deploy --prod
-```
-
-### Option 3: GitHub Pages
-```bash
-# Update vite.config.ts with base path
-npm run build
-# Deploy dist/ folder to gh-pages branch
-```
-
-### Option 4: Static Hosting
-```bash
-npm run build
-# Upload dist/ folder to any static host
-```
-
-## 🔧 Configuration
-
-### Base Path
-For subdirectory deployment, update `vite.config.ts`:
-```typescript
-export default defineConfig({
-  base: '/your-subdirectory/',
-  // ...
-})
-```
-
-### Environment Variables
-Create `.env` file:
-```
-VITE_APP_TITLE=UHCR Documentation
-VITE_BASE_URL=https://your-domain.com
-```
-
-## 📝 Adding New Documentation
-
-1. Add markdown file to `docs/` folder
-2. Copy to `public/docs/`
-3. Add route in `src/utils/navigation.ts`
-4. Add to sidebar navigation structure
-5. Add route in `src/router.tsx`
-
-## 🐛 Troubleshooting
-
-### Issue: Markdown files not loading
-**Solution**: Ensure files are copied to `public/docs/` folder
-
-### Issue: Dark mode not persisting
-**Solution**: Check localStorage is enabled in browser
-
-### Issue: Build errors
-**Solution**: Clear cache and rebuild
-```bash
-rm -rf node_modules dist
-npm install
-npm run build
-```
-
-### Issue: Hot reload not working
-**Solution**: Restart dev server
-```bash
-npm run dev
-```
-
-## 📊 Performance Metrics
-
-Target metrics:
-- Lighthouse Performance: 90+
-- First Contentful Paint: < 1.5s
-- Time to Interactive: < 3.5s
-- Cumulative Layout Shift: < 0.1
-
-## 🔐 Security
-
-- XSS protection via rehype-sanitize
-- Content Security Policy ready
-- No inline scripts
-- Secure dependencies
-
-## 📄 License
-
-Apache-2.0 - See LICENSE.txt
-
-## 🤝 Contributing
-
-See CONTRIBUTING.md for guidelines
-
-## 📞 Support
-
-- Documentation: Visit /docs/contributing
-- Issues: GitHub Issues
-- Discussions: GitHub Discussions
+### Typography Stack
+- **Standard Text**: System UI font stack (`Inter`, `system-ui`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`).
+- **Monospace Code**: `JetBrains Mono`, `Fira Code`, `Consolas`.
 
 ---
 
-Built with ❤️ for the UHCR community
+## Hosting & Production Deployment
+
+Because the application compiles to flat, static HTML/JS/CSS assets, it can be hosted on any standard static web service:
+
+### Vercel Deployment
+```bash
+npm install -g vercel
+vercel --prod
+```
+
+### Netlify Deployment
+```bash
+npm install -g netlify-cli
+netlify deploy --prod --dir=dist
+```
+
+### GitHub Pages Deployment
+1. Set the correct `base` URL in `vite.config.ts` matching your repository path:
+   ```typescript
+   export default defineConfig({
+     base: '/UHCR-DOCS/',
+   })
+   ```
+2. Build the site and push the `./dist` folder to the target deployment branch:
+   ```bash
+   npm run build
+   npx gh-pages -d dist
+   ```
+
+---
+
+## Adding New Documentation Files
+
+To publish a new markdown guide on the documentation website:
+
+1. Write the content in standard markdown and place the file in `public/docs/`.
+2. Add a route definition mapping the file path in `src/utils/navigation.ts` inside `docRoutes`.
+3. Register the new item within the structured sidebar navigation array `navigation` in the same file.
+4. Add the route entry inside `src/router.tsx` to handle client-side hash routing.
+
+---
+
+## Security & Performance Guidelines
+
+- **Content Protection**: Markdown content is sanitized using `rehype-sanitize` to defend against XSS vectors in code block previews.
+- **Asset Split**: Vite automatically splits code bundles per page routing; do not bypass dynamic page imports.
+- **Image Optimization**: Ensure any images embedded in markdown are pre-compressed and stored in the `/public/` assets folder.
+
+---
+
+## Troubleshooting
+
+### Issue: Markdown pages return 404/Empty State
+*Cause*: The target markdown file was not copied to the `public/docs/` directory, or there is a mismatch in the file name casing.  
+*Solution*: Verify that the markdown file exists under `public/docs/` and that the casing matches the path entry in `navigation.ts`.
+
+### Issue: Tailwind utility classes not updating
+*Cause*: The project utilizes standard Vanilla CSS variables and utility classes. Tailwind is not loaded by default.  
+*Solution*: Add custom styling rules directly inside the global CSS configurations under `src/styles/`.
+
+---
+
+## License
+
+This documentation portal is licensed under the Apache-2.0 License.

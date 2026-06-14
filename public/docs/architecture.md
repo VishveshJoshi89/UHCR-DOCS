@@ -1,117 +1,145 @@
-# UHCR Architecture
+# Runtime Architecture Overview
 
-## Overview
+## Executive Summary
 
-UHCR is a layered execution stack that compiles a custom intermediate representation (IR) to native machine code at runtime, selecting the optimal execution path based on detected hardware capabilities.
+The Universal Hardware-Aware Compute Runtime (UHCR) is structured as a layered compilation and execution stack. This document details the component hierarchy, subsystem boundaries, inter-module data flows, and technical design trade-offs. By separating front-end syntax tracing from intermediate representation optimization and hardware-specific back-end code generation, UHCR delivers high-performance compute speeds while remaining adaptable to diverse hardware architectures.
 
-## Layer Diagram
+## Table of Contents
+
+- [Architectural Layers](#/docs/architecture#architectural-layers)
+- [Component Responsibilities](#/docs/architecture#component-responsibilities)
+- [Request & Execution Flow](#/docs/architecture#request--execution-flow)
+- [Data Flow Diagram](#/docs/architecture#data-flow-diagram)
+- [Design Trade-offs](#/docs/architecture#design-trade-offs)
+- [Future Considerations](#/docs/architecture#future-considerations)
+- [Best Practices](#/docs/architecture#best-practices)
+- [Troubleshooting](#/docs/architecture#troubleshooting)
+
+---
+
+## Architectural Layers
+
+The following diagram outlines the structural boundaries of the runtime system:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    @uhcr.jit Decorator                  │
-│         Trace Python → Build IR → Compile → Cache       │
+│                    Application Layer                    │
+│      Python User Script ──► uhcr.tensor() / @uhcr.jit   │
 ├─────────────────────────────────────────────────────────┤
-│                    Application Code                     │
-│              uhcr.tensor(), a.matmul(b)                 │
+│                   API & Frontend Layer                  │
+│       Tracing Engine (Symbolic execution, types)        │
 ├─────────────────────────────────────────────────────────┤
-│                      API Layer                          │
-│           uhcr/api/tensor.py, uhcr/api/ops.py           │
-│  - Tensor creation and shape management                 │
-│  - Operation dispatch (matmul, vadd)                    │
+│                     Compiler Layer                      │
+│   IR Builder ──► Optimizations (DCE, CSE) ──► Selector  │
 ├─────────────────────────────────────────────────────────┤
-│                 IR Optimization Pipeline                │
-│  Constant Fold → Strength Reduce → DCE → CSE            │
+│                     Backend Layer                       │
+│    x86_64 Assemblies / CUDA PTX / Python Interpreter    │
 ├─────────────────────────────────────────────────────────┤
-│                   Compiler Pipeline                     │
-│        uhcr/compiler/ir.py, ir_builder.py               │
-│  - IR types: I32, I64, F32, F64, V4F32, V8F32, PTR      │
-│  - Opcodes: scalar math, vector SIMD, memory, control   │
-│  - High-level intrinsics: MATMUL, RELU                  │
-├─────────────────────────────────────────────────────────┤
-│                  Code Generation                        │
-│  uhcr/compiler/x86_64/ — native x86-64 (AVX2)           │
-├─────────────────────────────────────────────────────────┤
-│                  Backend Selection                      │
-│              uhcr/backends/                             │
-│  - Backend ABC: name, priority, supports(), compile()   │
-│  - Smart routing: GPU ops → CUDA, scalar → CPU          │
-│  - Backends: CUDA(15) > AVX512(10) > AVX2(5) > Gen(1)   │
-├─────────────────────────────────────────────────────────┤
-│                Hardware Detection                       │
-│              uhcr/hardware/                             │
-│  - cpuid.py: JIT CPUID execution for feature flags      │
-│  - gpu_detect.py: CUDA/Vulkan/ROCm/Metal probing        │
-│  - memory_detect.py: RAM, NUMA, page size               │
-│  - platform_info.py: aggregated HardwareProfile         │
-├─────────────────────────────────────────────────────────┤
-│                   Plugin System                         │
-│              uhcr/plugins/                              │
-│  - Plugin ABC: initialize(), shutdown()                 │
-│  - PluginManager: discover, load, unload                │
-│  - TOML manifest: plugin.toml                           │
-│  - Registries: kernels, backends, passes                │
+│                  Native Runtime Layer                   │
+│   Memory Pools ──► Work-Stealing Scheduler ──► Safety    │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Subsystem Details
+---
 
-### Storage & Caching Subsystem (`uhcr.storage`)
-The storage layer provides performance optimization and reliability via:
-- **`MemoryPool`** (`memory_pool.py`): Manages a pre-allocated pool of `AlignedBuffer` instances, minimizing overhead by avoiding frequent runtime kernel requests.
-- **`RedisCache`** (`redis_cache.py`): Houses a fast hot-tier memory storage key-value system for quick retrieval of JIT-compiled binary functions.
-- **`SQLiteStore`** (`sqlite_store.py`): Serves as a persistent database for job execution metrics, histories, and server state.
-- **`IOOptimizer`** (`io_optimizer.py`): Combines memory-mapped I/O, LZ4 compression, and batched writes for lightning-fast disk/network transfers.
-- **`ChecksumValidator`** (`checksum.py`): SHA256-based integrity verification for cached kernels and data.
+## Component Responsibilities
 
-## Compilation Flow
+The runtime system splits operational requirements across specialized, decoupled modules:
 
-1. **User calls** `a.matmul(b)` on a Tensor
-2. **ops.py** builds IR using `IRBuilder` (emits MATMUL opcode)
-3. **UHCRRuntime.compile()** checks the cache (keyed by IR hash)
-4. **BackendSelector** picks the highest-priority compatible backend
-5. **Backend.compile()** generates native code:
-   - CUDA: generates PTX, JIT-loads via cuModuleLoadData
-   - AVX2: uses X86_64CodeGenerator → assembler → ExecutableMemory
-   - AArch64: uses AArch64CodeGenerator → NEON assembler → Darwin MAP_JIT ExecutableMemory
-   - Generic: returns Python interpreter closure
-6. **Result** is cached and returned as a callable
+### 1. Frontend & API (`uhcr.api`, `uhcr.frontend`)
+- **Interception**: Captures standard Python function declarations via the `@uhcr.jit` decorator.
+- **Symbolic Tracing**: Intercepts arithmetic and logical statements, injecting proxy execution tokens to trace data dependencies.
+- **Tensor Management**: Formats, aligns, and coordinates user-facing multi-dimensional arrays.
 
-## Key Design Decisions
+### 2. Intermediate Representation (`uhcr.compiler`)
+- **IR Assembly**: Represents computations in an SSA (Static Single Assignment) syntax.
+- **Pass Pipeline**: Runs sequential structural transformations to minimize work (e.g. constant folding, dead-code elimination).
 
-### Capability-Driven Selection
-Backends declare what hardware they need (`supports(profile)`). The selector picks the best match automatically. No user configuration required.
+### 3. Backend Codegen (`uhcr.backends`)
+- **Assemblers**: Compiles abstract IR instructions to target machine codes (AVX2, AVX512, CUDA, AArch64).
+- **Fallback Engine**: A pure-Python interpreter that handles unsupported instructions.
 
-### JIT-Only Architecture
-All code generation happens at runtime. There is no ahead-of-time compilation step. This allows the runtime to adapt to the exact hardware it's running on.
+### 4. Operations & Storage (`uhcr.storage`, `uhcr.runtime`)
+- **Memory Pool**: Manages 64-byte aligned memory blocks to avoid syscall allocation latencies.
+- **Task Scheduler**: Controls thread queues and schedules parallel workloads.
+- **State Database**: Uses SQLite to record performance histories and job metrics.
+- **High-Speed Cache**: Uses Redis to store JIT-compiled binaries.
 
-### IR as the Contract
-The IR is the boundary between the API layer and backends. Any backend that can lower the IR opcodes can be plugged in. This enables the multi-ISA roadmap (ARM, RISC-V).
+---
 
-### Interpreter Fallback
-The generic backend includes a pure-Python IR interpreter. This guarantees every IR program can execute on any platform, even without native codegen support.
+## Request & Execution Flow
 
-## Module Dependencies
+To trace a call to `a.matmul(b)` through the system, the execution proceeds as follows:
 
 ```
-uhcr/__init__.py
-  → uhcr.hardware.platform_info (detect)
-  → uhcr.api.tensor (tensor)
-
-uhcr.api.ops
-  → uhcr.compiler.ir_builder (build IR)
-
-uhcr.hardware.platform_info
-  → uhcr.hardware.cpuid
-  → uhcr.hardware.gpu_detect
-  → uhcr.hardware.memory_detect
-
-uhcr.backends.backend_selector
-  → uhcr.backends.cpu_generic
-  → uhcr.backends.cpu_avx2
-  → uhcr.backends.cpu_avx512
-  → uhcr.backends.cuda_backend
-
-uhcr.backends.cpu_avx2
-  → uhcr.compiler.x86_64.codegen
-  → uhcr.compiler.x86_64.executable_memory
+[User App]                       [Compiler]                       [Runtime]
+    │                                │                                │
+    │ ── 1. Call a.matmul(b) ──────► │                                │
+    │                                │ ── 2. Create IR Module ──────► │
+    │                                │                                │ ── 3. Check Cache ──┐
+    │                                │ ◄── 4. Cache Miss ────────────│ ◄───────────────────┘
+    │                                │                                │
+    │                                │ ── 5. Select Backend ────────► │
+    │                                │                                │ ── 6. Detect CPU/GPU ─┐
+    │                                │ ◄── 7. Return Backend ────────│ ◄─────────────────────┘
+    │                                │                                │
+    │                                │ ── 8. Emit Machine Code ─────► │
+    │                                │                                │ ── 9. Alloc Aligned ──┐
+    │                                │ ◄── 10. Load Function Pointer ─│ ◄─────────────────────┘
+    │                                │                                │
+    │ ◄── 11. Run Compiled Binary ───│                                │
 ```
+
+---
+
+## Design Trade-offs
+
+### 1. JIT-Only vs. Ahead-of-Time (AOT) Compilation
+- **Decision**: All machine code generation is deferred to application runtime.
+- **Pros**: Enables dynamic system profiling. The runtime can check compiler extensions (e.g. AVX512) and compile using the absolute best assembly.
+- **Cons**: The first execution path incurs a latency penalty (compilation warmup).
+
+### 2. Standard Ctypes vs. C Extension Modules
+- **Decision**: Python bindings communicate with native C++ safety monitors via `ctypes`.
+- **Pros**: Simplifies cross-platform distribution and avoids complex Python-header build dependencies during user package installation.
+- **Cons**: Slightly higher overhead during boundary crossings compared to compiled C-API extensions.
+
+---
+
+## Future Considerations
+
+- **ARM64 Native Execution**: Expand target assembler layers to support Apple Silicon and ARM servers natively.
+- **Dynamic Compilation Budgets**: Introduce heuristics to budget compilation times against historical execution frequencies.
+
+---
+
+## Best Practices
+
+- **Profile Host Systems**: Run `uhcr.detect()` early in the program initialization phase to verify that hardware paths are resolved correctly.
+- **Structure for JIT**: Keep decorated functions focused on compute workloads to allow JIT compilers to perform optimizations.
+
+---
+
+## Troubleshooting
+
+### Incorrect Dispatch
+If workloads execute on slow default backends instead of dedicated hardware:
+1. Verify target libraries (e.g. CUDA SDK) are present on system paths.
+2. Check that user credentials have access to system device profiles.
+
+---
+
+## Related Documentation
+
+- [How UHCR Works](#/docs/how-uhcr-works)
+- [Runtime Execution Engine](#/docs/runtime)
+- [Storage and Caching](#/docs/storage)
+- [API Reference](#/docs/api-reference)
+
+## Next Steps
+
+Continue with:
+
+- Previous: [How UHCR Works](#/docs/how-uhcr-works)
+- Home: [Documentation Home](#/)
+- Next: [Runtime Execution Engine](#/docs/runtime)
