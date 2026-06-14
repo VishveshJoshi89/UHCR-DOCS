@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  base: "/UHCR-DOCS/",
+  base: "/",
 
   plugins: [
     react(),
@@ -12,8 +12,8 @@ export default defineConfig({
       manifest: {
         name: "UHCR-DOCS",
         short_name: "UHCR",
-        start_url: "/UHCR-DOCS/",
-        scope: "/UHCR-DOCS/",
+        start_url: "/",
+        scope: "/",
         display: "standalone",
         theme_color: "#ffffff",
         background_color: "#ffffff",
