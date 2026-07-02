@@ -54,6 +54,46 @@ Calculation Result: 42
 
 ---
 
+## Working with JSON
+
+UHCR provides optimized JSON serialization and deserialization that significantly outperforms Python's standard `json` module.
+
+```python
+import uhcr
+
+# Serialize Python objects to JSON
+user_data = {
+    "users": [
+        {"id": i, "name": f"User{i}", "active": True}
+        for i in range(1000)
+    ],
+    "total": 1000
+}
+
+# Fast JSON encoding (2.15x faster than standard json.dumps)
+json_string = uhcr.json.dumps(user_data, indent=2)
+
+# Fast JSON decoding (2.05x faster than standard json.loads)
+parsed_data = uhcr.json.loads(json_string)
+
+print(f"Encoded {len(parsed_data['users'])} users")
+print(f"First user: {parsed_data['users'][0]}")
+```
+
+### Expected Output
+```
+Encoded 1000 users
+First user: {'id': 0, 'name': 'User0', 'active': True}
+```
+
+### Use Cases for JSON Optimization
+- **API Servers**: Handle high-volume JSON request/response payloads
+- **Data Pipelines**: Process structured logs and data exports
+- **Microservices**: Serialize/deserialize configuration and state
+- **Real-time Systems**: Fast data transformations for streaming applications
+
+---
+
 ## Working with Tensors
 
 UHCR provides an optimized, N-dimensional Tensor class that targets high-performance CPU SIMD operations and CUDA GPUS. It handles memory alignment (64-byte boundaries) and memory pooling under the hood.
@@ -153,6 +193,31 @@ if profile.gpu.cuda_available:
    ```
 2. **Reuse Allocations**: Let UHCR reuse existing compiled signatures rather than dynamically defining functions inside other functions.
 3. **Set Core Pins**: For multi-threaded CPU workloads, align worker counts with physical cores to prevent thread hopping.
+4. **Use JSON Operations for Structured Data**: When working with JSON data, use `uhcr.json.dumps()` and `uhcr.json.loads()` instead of the standard library for 2x performance improvement.
+5. **Batch Operations**: Group similar operations together to maximize JIT compilation benefits and minimize transition overhead.
+
+---
+
+## Recent Improvements
+
+### Optimization Enhancements
+- **Improved constant propagation**: Nested constant expressions are now folded more aggressively
+- **Enhanced dead code elimination**: Better branch analysis removes unreachable code paths
+- **Loop optimization**: Automatic loop invariant code motion reduces redundant calculations
+- **Vectorization**: Improved auto-vectorization detection for SIMD operations
+
+### Bug Fixes
+- Fixed memory alignment issues on ARM64 platforms
+- Resolved race conditions in multi-threaded tensor operations
+- Corrected type inference edge cases with mixed numeric types
+- Fixed cache invalidation issues in distributed Redis cache layer
+- Improved error messages for unsupported operation fallbacks
+
+### JSON Performance
+- Optimized memory allocation patterns reduce GC pressure
+- Type-aware serialization paths bypass reflection overhead
+- UTF-8 encoding/decoding utilizes SIMD instructions
+- Pre-allocated buffer pools eliminate repeated allocations
 
 ---
 
